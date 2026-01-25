@@ -1,0 +1,251 @@
+rules_version = '2';
+
+/**
+ * Taxi Line Platform - Firestore Security Rules
+ * 
+ * Architecture principles:
+ * - All business logic lives in Cloud Functions
+ * - Clients have minimal write access
+ * - Most writes go through callable functions
+ * - Clients can read their own data in realtime
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // =========================================================================
+    // Helper Functions
+    // =========================================================================
+    
+    /**
+     * Check if the request is authenticated
+     */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    /**
+     * Check if the authenticated user matches the given uid
+     */
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    /**
+     * Check if the user has a specific role (stored in custom claims)
+     */
+    function hasRole(role) {
+      return isAuthenticated() && request.auth.token.role == role;
+    }
+    
+    /**
+     * Check if user is a manager
+     */
+    function isManager() {
+      return hasRole('manager');
+    }
+    
+    /**
+     * Check if user is a driver
+     */
+    function isDriver() {
+      return hasRole('driver');
+    }
+    
+    /**
+     * Check if user is a passenger
+     */
+    function isPassenger() {
+      return hasRole('passenger');
+    }
+    
+    /**
+     * Check if the user is a participant in a trip (passenger or driver)
+     */
+    function isTripParticipant() {
+      return isAuthenticated() && (
+        resource.data.passengerId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid
+      );
+    }
+    
+    // =========================================================================
+    // Default: Deny all access
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // =========================================================================
+    // Users Collection
+    // Path: /users/{uid}
+    // 
+    // User profile documents containing passenger, driver, or manager data.
+    // - Users can read and write their own profile
+    // - Managers can read and write all profiles (for admin purposes)
+    // - No cross-user access for regular users
+    // =========================================================================
+    match /users/{uid} {
+      // User can read their own document, managers can read any
+      allow read: if isOwner(uid) || isManager();
+      
+      // User can update their own document, managers can update any
+      // Note: User creation is handled by Cloud Functions on auth trigger
+      allow write: if isOwner(uid) || isManager();
+    }
+    
+    // =========================================================================
+    // Driver Live Location Collection
+    // Path: /driverLive/{driverId}
+    // 
+    // Real-time driver location data, isolated from trip documents for
+    // performance and security.
+    // - Drivers can only write their own location
+    // - Location reads are restricted to prevent tracking
+    // - Passengers can read location only for their active trip's driver
+    // - Managers can read all for monitoring
+    // =========================================================================
+    match /driverLive/{driverId} {
+      // Driver can write their own location only
+      allow write: if isOwner(driverId) && isDriver();
+      
+      // Reading driver location:
+      // - Managers can read all (for monitoring dashboard)
+      // - Drivers can read their own location
+      // - Passengers cannot directly read - they get updates via trip document
+      //   or through Cloud Functions to prevent driver tracking
+      allow read: if isOwner(driverId) || isManager();
+    }
+    
+    // =========================================================================
+    // Trips Collection
+    // Path: /trips/{tripId}
+    // 
+    // Trip documents containing full trip lifecycle data.
+    // - Only participants (passenger and assigned driver) can read
+    // - NO direct client writes - all modifications through Cloud Functions
+    // - This ensures trip state machine integrity and proper fare calculation
+    // =========================================================================
+    match /trips/{tripId} {
+      // Only trip participants can read their trip data
+      // Managers can read all trips for support and reporting
+      allow read: if isTripParticipant() || isManager();
+      
+      // NO direct writes allowed - all trip operations go through Cloud Functions
+      // This protects: trip status transitions, fare modifications, timestamps
+      allow write: if false;
+    }
+    
+    // =========================================================================
+    // Trip Requests Collection
+    // Path: /tripRequests/{requestId}
+    // 
+    // Pending trip requests before driver assignment.
+    // - Used for driver matching queue
+    // - NO direct client writes - requests created via Cloud Functions
+    // - Drivers can read available requests in their area
+    // =========================================================================
+    match /tripRequests/{requestId} {
+      // Drivers can read available requests for matching
+      // Passengers can read their own requests
+      // Managers can read all
+      allow read: if isDriver() || 
+                    (isAuthenticated() && resource.data.passengerId == request.auth.uid) ||
+                    isManager();
+      
+      // NO direct writes - trip requests are managed by Cloud Functions
+      // This ensures proper validation, pricing, and matching logic
+      allow write: if false;
+    }
+    
+    // =========================================================================
+    // Routes Collection
+    // Path: /routes/{routeId}
+    // 
+    // Predefined taxi line routes (e.g., Nablus-Ramallah, Ramallah-Jenin).
+    // - Manager only for read/write
+    // - Routes define stops, typical duration, and base pricing
+    // =========================================================================
+    match /routes/{routeId} {
+      // Only managers can read and write route configuration
+      allow read, write: if isManager();
+    }
+    
+    // =========================================================================
+    // Pricing Rules Collection
+    // Path: /pricingRules/{ruleId}
+    // 
+    // Dynamic pricing configuration including base fares, per-km rates,
+    // surge multipliers, and time-based adjustments.
+    // - Manager only access to prevent fare manipulation
+    // =========================================================================
+    match /pricingRules/{ruleId} {
+      // Only managers can read and write pricing rules
+      allow read, write: if isManager();
+    }
+    
+    // =========================================================================
+    // Ratings Collection
+    // Path: /ratings/{tripId}
+    // 
+    // Trip ratings and reviews from passengers and drivers.
+    // - Can only be written after trip is completed
+    // - Participants can read ratings for their trips
+    // =========================================================================
+    match /ratings/{tripId} {
+      // Trip participants and managers can read ratings
+      allow read: if isManager() || (
+        isAuthenticated() && (
+          resource.data.passengerId == request.auth.uid ||
+          resource.data.driverId == request.auth.uid
+        )
+      );
+      
+      // Allow write only if:
+      // 1. User is authenticated
+      // 2. User is a participant in the trip
+      // 3. The corresponding trip exists and is completed
+      // Note: We check the trip document to verify completion status
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/trips/$(tripId)) &&
+        get(/databases/$(database)/documents/trips/$(tripId)).data.status == 'completed' &&
+        (
+          get(/databases/$(database)/documents/trips/$(tripId)).data.passengerId == request.auth.uid ||
+          get(/databases/$(database)/documents/trips/$(tripId)).data.driverId == request.auth.uid
+        );
+      
+      // Updates allowed only by the original rater or manager
+      allow update: if isManager() || (
+        isAuthenticated() && resource.data.raterId == request.auth.uid
+      );
+      
+      // No deletes allowed - ratings are permanent
+      allow delete: if false;
+    }
+    
+    // =========================================================================
+    // Driver Availability Collection (Optional - for matching optimization)
+    // Path: /driverAvailability/{driverId}
+    // 
+    // Tracks which drivers are online and available for trips.
+    // - Drivers can update their own availability
+    // - Managers can read/write all for system management
+    // =========================================================================
+    match /driverAvailability/{driverId} {
+      allow read: if isOwner(driverId) || isManager();
+      allow write: if isOwner(driverId) && isDriver();
+    }
+    
+    // =========================================================================
+    // FCM Tokens Collection
+    // Path: /fcmTokens/{uid}
+    // 
+    // Push notification tokens for each user.
+    // - Users can only write their own tokens
+    // - Cloud Functions read tokens to send notifications
+    // =========================================================================
+    match /fcmTokens/{uid} {
+      allow read: if isOwner(uid) || isManager();
+      allow write: if isOwner(uid);
+    }
+  }
+}
