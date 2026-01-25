@@ -38,6 +38,9 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 functions/.runtimeconfig.json
+emulator-data/
+pubsub-debug.log
+database-debug.log
 
 # Cache
 .eslintcache
