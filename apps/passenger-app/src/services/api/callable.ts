@@ -98,3 +98,35 @@ export async function createTripRequest(
   );
 }
 
+/**
+ * Submit rating request
+ */
+export interface SubmitRatingRequest {
+  tripId: string;
+  rating: number;
+  comment?: string | undefined;
+}
+
+/**
+ * Submit rating response
+ */
+export interface SubmitRatingResponse {
+  success: boolean;
+  ratingId: string;
+}
+
+/**
+ * Submit a rating for a completed trip
+ * Calls the submitRating Cloud Function
+ */
+export async function submitRating(
+  tripId: string,
+  rating: number,
+  comment?: string
+): Promise<SubmitRatingResponse> {
+  return callFunction<SubmitRatingRequest, SubmitRatingResponse>(
+    'submitRating',
+    { tripId, rating, comment }
+  );
+}
+

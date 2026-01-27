@@ -39,9 +39,11 @@ export interface TripData {
   estimatedDistanceKm: number;
   estimatedDurationMin: number;
   estimatedPriceIls: number;
+  finalPriceIls?: number;
   status: string;
   createdAt: Date;
   matchedAt?: Date;
+  completedAt?: Date;
 }
 
 /**

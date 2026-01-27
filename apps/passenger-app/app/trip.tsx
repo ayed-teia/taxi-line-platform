@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthStore } from '../src/store';
-import { ActiveTripScreen } from '../src/features/trip';
+import { ActiveTripScreen, RatingScreen } from '../src/features/trip';
 import { 
   subscribeToTrip, 
   subscribeToDriverLocation,
   TripData, 
   DriverLocation 
 } from '../src/services/realtime';
+import { submitRating } from '../src/services/api';
 import { TripStatus } from '@taxi-line/shared';
 
 export default function Trip() {
@@ -20,6 +21,8 @@ export default function Trip() {
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showRating, setShowRating] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
 
   const tripId = params.tripId;
 
@@ -33,8 +36,13 @@ export default function Trip() {
         setTrip(tripData);
         setLoading(false);
         
-        // If trip is completed or cancelled, navigate home after delay
-        if (tripData?.status === 'completed' || tripData?.status === 'cancelled') {
+        // If trip is completed, show rating screen (unless already rated)
+        if (tripData?.status === 'completed' && !hasRated) {
+          setShowRating(true);
+        }
+        
+        // If trip is cancelled, navigate home after delay
+        if (tripData?.status === 'cancelled') {
           setTimeout(() => {
             router.replace('/home');
           }, 3000);
@@ -47,7 +55,7 @@ export default function Trip() {
     );
 
     return () => unsubscribe();
-  }, [tripId, router]);
+  }, [tripId, router, hasRated]);
 
   // Subscribe to driver location when we have a driverId
   useEffect(() => {
@@ -96,6 +104,22 @@ export default function Trip() {
     router.replace('/home');
   };
 
+  // Handle rating submission
+  const handleSubmitRating = useCallback(async (rating: number, comment?: string) => {
+    if (!tripId) return;
+    
+    await submitRating(tripId, rating, comment);
+    setHasRated(true);
+    setShowRating(false);
+    router.replace('/home');
+  }, [tripId, router]);
+
+  // Handle skip rating
+  const handleSkipRating = useCallback(() => {
+    setShowRating(false);
+    router.replace('/home');
+  }, [router]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -111,6 +135,18 @@ export default function Trip() {
         <Text style={styles.errorIcon}>⚠️</Text>
         <Text style={styles.errorText}>{error || 'Trip not found'}</Text>
       </View>
+    );
+  }
+
+  // Show rating screen when trip is completed
+  if (showRating && trip.status === 'completed') {
+    return (
+      <RatingScreen
+        tripId={tripId}
+        finalPriceIls={trip.finalPriceIls ?? trip.estimatedPriceIls}
+        onSubmit={handleSubmitRating}
+        onSkip={handleSkipRating}
+      />
     );
   }
 

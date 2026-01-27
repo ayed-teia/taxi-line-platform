@@ -27,6 +27,7 @@ export {
   driverArrived,
   startTrip,
   completeTrip,
+  submitRating,
 } from './api/callable';
 
 // ============================================================================

@@ -6,3 +6,4 @@ export * from './acceptTripRequest.callable';
 export * from './driverArrived.callable';
 export * from './startTrip.callable';
 export * from './completeTrip.callable';
+export * from './submitRating.callable';
