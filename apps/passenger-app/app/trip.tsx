@@ -3,7 +3,12 @@ import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuthStore } from '../src/store';
 import { ActiveTripScreen } from '../src/features/trip';
-import { subscribeToTrip, TripData } from '../src/services/realtime';
+import { 
+  subscribeToTrip, 
+  subscribeToDriverLocation,
+  TripData, 
+  DriverLocation 
+} from '../src/services/realtime';
 import { TripStatus } from '@taxi-line/shared';
 
 export default function Trip() {
@@ -12,6 +17,7 @@ export default function Trip() {
   const params = useLocalSearchParams<{ tripId: string }>();
   
   const [trip, setTrip] = useState<TripData | null>(null);
+  const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +48,33 @@ export default function Trip() {
 
     return () => unsubscribe();
   }, [tripId, router]);
+
+  // Subscribe to driver location when we have a driverId
+  useEffect(() => {
+    if (!trip?.driverId) {
+      setDriverLocation(null);
+      return;
+    }
+
+    // Only track driver for active trips
+    const activeStatuses = ['driver_assigned', 'driver_arrived', 'in_progress'];
+    if (!activeStatuses.includes(trip.status)) {
+      setDriverLocation(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToDriverLocation(
+      trip.driverId,
+      (location) => {
+        setDriverLocation(location);
+      },
+      (err) => {
+        console.error('Error subscribing to driver location:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [trip?.driverId, trip?.status]);
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
@@ -86,6 +119,7 @@ export default function Trip() {
       tripId={tripId}
       status={trip.status as TripStatus}
       estimatedPriceIls={trip.estimatedPriceIls}
+      driverLocation={driverLocation}
       onCancel={handleCancel}
       onGoHome={handleGoHome}
     />

@@ -2,11 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TripStatus } from '@taxi-line/shared';
 import { Button } from '../../../ui';
+import { DriverLocation } from '../../../services/realtime';
 
 interface ActiveTripScreenProps {
   tripId: string;
   status: TripStatus;
   estimatedPriceIls?: number;
+  driverLocation?: DriverLocation | null;
   onCancel: () => void;
   onGoHome?: () => void;
 }
@@ -19,6 +21,7 @@ export function ActiveTripScreen({
   tripId, 
   status, 
   estimatedPriceIls,
+  driverLocation,
   onCancel,
   onGoHome 
 }: ActiveTripScreenProps) {
@@ -45,9 +48,22 @@ export function ActiveTripScreen({
 
   return (
     <View style={styles.container}>
-      {/* Map placeholder */}
+      {/* Map placeholder with driver location */}
       <View style={styles.mapPlaceholder}>
         <Text style={styles.mapEmoji}>🗺️</Text>
+        {driverLocation && (
+          <View style={styles.driverMarker}>
+            <Text style={styles.driverMarkerIcon}>🚗</Text>
+            <Text style={styles.driverCoords}>
+              {driverLocation.lat.toFixed(4)}, {driverLocation.lng.toFixed(4)}
+            </Text>
+            {driverLocation.speed !== null && driverLocation.speed > 0 && (
+              <Text style={styles.driverSpeed}>
+                {Math.round(driverLocation.speed * 3.6)} km/h
+              </Text>
+            )}
+          </View>
+        )}
       </View>
 
       {/* Trip info card */}
@@ -92,6 +108,33 @@ const styles = StyleSheet.create({
   },
   mapEmoji: {
     fontSize: 64,
+  },
+  driverMarker: {
+    position: 'absolute',
+    bottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  driverMarkerIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  driverCoords: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  driverSpeed: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '600',
+    marginTop: 2,
   },
   tripCard: {
     backgroundColor: '#FFFFFF',

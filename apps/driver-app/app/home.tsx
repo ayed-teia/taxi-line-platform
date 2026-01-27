@@ -1,25 +1,82 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Redirect } from 'expo-router';
+import { Alert } from 'react-native';
 import { useAuthStore, useDriverStore } from '../src/store';
 import { HomeScreen } from '../src/features/home';
+import { 
+  startLocationTracking, 
+  stopLocationTracking,
+  requestLocationPermissions,
+  setDriverAvailability,
+  getCurrentLocation,
+} from '../src/services/location';
 
 export default function Home() {
-  const { isAuthenticated } = useAuthStore();
-  const { setStatus } = useDriverStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { status, setStatus } = useDriverStore();
 
-  // Handle status toggle - UI only for now
-  // TODO: Implement actual GPS tracking and Firestore writes when ready
-  const handleToggleStatus = useCallback(
-    (goOnline: boolean) => {
-      // UI-only toggle - no Firestore writes yet
-      // Future: Call setDriverAvailability, updateDriverLocation
-      if (goOnline) {
-        setStatus('online');
+  // Handle location tracking based on online status
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const manageTracking = async () => {
+      if (status === 'online') {
+        const started = await startLocationTracking(user.uid);
+        if (!started) {
+          console.warn('Failed to start location tracking');
+        }
       } else {
-        setStatus('offline');
+        await stopLocationTracking();
+      }
+    };
+
+    manageTracking();
+
+    // Cleanup on unmount
+    return () => {
+      stopLocationTracking();
+    };
+  }, [status, user?.uid]);
+
+  // Handle status toggle with location tracking
+  const handleToggleStatus = useCallback(
+    async (goOnline: boolean) => {
+      if (!user?.uid) return;
+
+      if (goOnline) {
+        // Request permissions first
+        const hasPermission = await requestLocationPermissions();
+        if (!hasPermission) {
+          Alert.alert(
+            'Location Required',
+            'Location permission is required to go online. Please enable location access in settings.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        // Get current location for availability
+        const location = await getCurrentLocation();
+        
+        // Update Firestore availability
+        try {
+          await setDriverAvailability(user.uid, true, location ?? undefined);
+          setStatus('online');
+        } catch (error) {
+          console.error('Failed to go online:', error);
+          Alert.alert('Error', 'Failed to go online. Please try again.');
+        }
+      } else {
+        // Go offline
+        try {
+          await setDriverAvailability(user.uid, false);
+          setStatus('offline');
+        } catch (error) {
+          console.error('Failed to go offline:', error);
+        }
       }
     },
-    [setStatus]
+    [user?.uid, setStatus]
   );
 
   // Redirect to login if not authenticated

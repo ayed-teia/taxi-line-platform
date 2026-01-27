@@ -1,0 +1,36 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: #1a1a1a;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #333;
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.header nav a {
+  color: #646cff;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.header nav a:hover {
+  background: #333;
+}
+
+.main {
+  flex: 1;
+  padding: 2rem;
+}

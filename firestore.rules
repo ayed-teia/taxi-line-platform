@@ -103,6 +103,12 @@ service cloud.firestore {
     // - Location reads are restricted to prevent tracking
     // - Passengers can read location only for their active trip's driver
     // - Managers can read all for monitoring
+    // 
+    // ⚠️  MVP LIMITATION: Passenger read access is permissive (any passenger
+    //     can read any driver location). For production, implement one of:
+    //     1. Server-side proxy for location reads
+    //     2. Store active trip driverId in passenger's token claims
+    //     3. Use a subcollection under trips for location streaming
     // =========================================================================
     match /driverLive/{driverId} {
       // Driver can write their own location only
@@ -111,9 +117,35 @@ service cloud.firestore {
       // Reading driver location:
       // - Managers can read all (for monitoring dashboard)
       // - Drivers can read their own location
-      // - Passengers cannot directly read - they get updates via trip document
-      //   or through Cloud Functions to prevent driver tracking
+      // - Passengers: MVP allows any passenger to read (see limitation above)
+      allow read: if isOwner(driverId) || isManager() || isPassenger();
+    }
+    
+    // =========================================================================
+    // Drivers Collection with Inbox Subcollection
+    // Path: /drivers/{driverId}
+    // Path: /drivers/{driverId}/inbox/{requestId}
+    // 
+    // Driver profiles and their inbox for trip request notifications.
+    // - Cloud Functions write to inbox
+    // - Drivers can read their own inbox
+    // =========================================================================
+    match /drivers/{driverId} {
+      // Driver can read their own profile, managers can read all
       allow read: if isOwner(driverId) || isManager();
+      
+      // Driver can update their own profile (isOnline status)
+      allow write: if isOwner(driverId) && isDriver();
+      
+      // Inbox subcollection
+      match /inbox/{requestId} {
+        // Driver can read their own inbox items
+        allow read: if isOwner(driverId) || isManager();
+        
+        // NO direct writes - inbox is managed by Cloud Functions
+        // Cloud Functions use Admin SDK which bypasses security rules
+        allow write: if false;
+      }
     }
     
     // =========================================================================

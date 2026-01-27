@@ -6,7 +6,6 @@ import {
   GeoPoint,
 } from 'firebase/firestore';
 import { getFirebaseFirestore } from '../firebase';
-import { LatLng } from '@taxi-line/shared';
 
 /**
  * Driver Live Location Service
@@ -14,9 +13,20 @@ import { LatLng } from '@taxi-line/shared';
  * ALLOWED WRITES per Firestore rules:
  * - driverLive/{driverId}: Driver can write their own location
  * - driverAvailability/{driverId}: Driver can update their own availability
+ * - drivers/{driverId}: Driver can update their own profile
  *
  * These are the ONLY Firestore writes allowed from the driver app.
  */
+
+/**
+ * Location update data structure
+ */
+export interface LocationUpdate {
+  lat: number;
+  lng: number;
+  heading?: number | undefined;
+  speed?: number | undefined;
+}
 
 /**
  * Update driver's live location
@@ -24,15 +34,16 @@ import { LatLng } from '@taxi-line/shared';
  */
 export async function updateDriverLocation(
   driverId: string,
-  location: LatLng,
-  heading?: number
+  location: LocationUpdate
 ): Promise<void> {
   const db = getFirebaseFirestore();
   const locationRef = doc(db, 'driverLive', driverId);
 
   await setDoc(locationRef, {
-    location: new GeoPoint(location.lat, location.lng),
-    heading: heading ?? null,
+    lat: location.lat,
+    lng: location.lng,
+    heading: location.heading ?? null,
+    speed: location.speed ?? null,
     updatedAt: serverTimestamp(),
   });
 }
@@ -54,7 +65,7 @@ export async function removeDriverLocation(driverId: string): Promise<void> {
 export async function setDriverAvailability(
   driverId: string,
   isOnline: boolean,
-  currentLocation?: LatLng
+  currentLocation?: { lat: number; lng: number }
 ): Promise<void> {
   const db = getFirebaseFirestore();
   const availabilityRef = doc(db, 'driverAvailability', driverId);
