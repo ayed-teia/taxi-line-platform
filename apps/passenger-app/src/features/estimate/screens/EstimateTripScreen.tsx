@@ -8,8 +8,9 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Button } from '../../../ui';
-import { estimateTrip, EstimateTripResponse } from '../../../services/api';
+import { estimateTrip, createTripRequest, EstimateTripResponse } from '../../../services/api';
 import { LatLng } from '@taxi-line/shared';
 
 // Sample locations in the West Bank for testing
@@ -25,6 +26,8 @@ const SAMPLE_LOCATIONS = {
  * Allows entering pickup/dropoff coordinates and displays estimated price
  */
 export function EstimateTripScreen() {
+  const router = useRouter();
+
   // Form state
   const [pickupLat, setPickupLat] = useState('32.2211');
   const [pickupLng, setPickupLng] = useState('35.2544');
@@ -34,6 +37,7 @@ export function EstimateTripScreen() {
   // Result state
   const [estimate, setEstimate] = useState<EstimateTripResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Handle estimate
@@ -71,6 +75,45 @@ export function EstimateTripScreen() {
       setIsLoading(false);
     }
   }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // Handle trip request
+  const handleRequestTrip = useCallback(async () => {
+    if (!estimate) return;
+
+    setIsRequesting(true);
+    setError(null);
+
+    try {
+      const pickup: LatLng = {
+        lat: parseFloat(pickupLat),
+        lng: parseFloat(pickupLng),
+      };
+
+      const dropoff: LatLng = {
+        lat: parseFloat(dropoffLat),
+        lng: parseFloat(dropoffLng),
+      };
+
+      const result = await createTripRequest(pickup, dropoff, estimate);
+      
+      // Navigate to searching screen with request details
+      router.push({
+        pathname: '/searching',
+        params: {
+          requestId: result.requestId,
+          distanceKm: estimate.distanceKm.toString(),
+          durationMin: estimate.durationMin.toString(),
+          priceIls: estimate.priceIls.toString(),
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create trip request';
+      setError(message);
+      Alert.alert('Error', message);
+    } finally {
+      setIsRequesting(false);
+    }
+  }, [estimate, pickupLat, pickupLng, dropoffLat, dropoffLng, router]);
 
   // Preset route buttons
   const setNablusToRamallah = () => {
@@ -219,6 +262,15 @@ export function EstimateTripScreen() {
             <Text style={styles.pricingNote}>
               Pricing: ₪1 per 2 km (minimum ₪5)
             </Text>
+
+            {/* Request Trip Button */}
+            <View style={styles.requestButtonContainer}>
+              <Button
+                title={isRequesting ? 'Requesting...' : 'Request Trip'}
+                onPress={handleRequestTrip}
+                disabled={isRequesting}
+              />
+            </View>
           </View>
         )}
       </View>
@@ -362,5 +414,8 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  requestButtonContainer: {
+    marginTop: 24,
   },
 });

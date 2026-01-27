@@ -18,7 +18,7 @@ export { health } from './api/http';
 // ============================================================================
 // Callable Functions
 // ============================================================================
-export { ping, estimateTrip } from './api/callable';
+export { ping, estimateTrip, createTripRequest } from './api/callable';
 
 // ============================================================================
 // Auth Module Functions

@@ -63,3 +63,38 @@ export async function estimateTrip(
   );
 }
 
+/**
+ * Trip request creation request
+ */
+export interface CreateTripRequestInput {
+  pickup: LatLng;
+  dropoff: LatLng;
+  estimate: {
+    distanceKm: number;
+    durationMin: number;
+    priceIls: number;
+  };
+}
+
+/**
+ * Trip request creation response
+ */
+export interface CreateTripRequestResponse {
+  requestId: string;
+}
+
+/**
+ * Create a new trip request
+ * Calls the createTripRequest Cloud Function
+ */
+export async function createTripRequest(
+  pickup: LatLng,
+  dropoff: LatLng,
+  estimate: EstimateTripResponse
+): Promise<CreateTripRequestResponse> {
+  return callFunction<CreateTripRequestInput, CreateTripRequestResponse>(
+    'createTripRequest',
+    { pickup, dropoff, estimate }
+  );
+}
+
