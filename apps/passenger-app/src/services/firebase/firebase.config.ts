@@ -1,11 +1,19 @@
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { 
+  initializeAuth,
+  getAuth,
+  getReactNativePersistence,
+  connectAuthEmulator,
+  Auth
+} from 'firebase/auth';
 import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, Functions, connectFunctionsEmulator } from 'firebase/functions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
- * Firebase configuration
+ * Firebase configuration for Passenger App
  * Environment variables are loaded via Expo Constants
  */
 const expoConfig = Constants.expoConfig?.extra ?? {};
@@ -32,60 +40,89 @@ const EMULATOR_PORTS = {
 
 const FUNCTIONS_REGION = 'europe-west1';
 
-let app: FirebaseApp;
-let auth: Auth;
-let firestore: Firestore;
-let functions: Functions;
+// ============================================================================
+// INITIALIZE FIREBASE AT MODULE SCOPE (ONCE)
+// ============================================================================
 
-export function initializeFirebase(): FirebaseApp {
-  if (getApps().length === 0) {
-    app = initializeApp(firebaseConfig);
-    
-    if (useEmulators) {
-      console.log(`🔧 Firebase configured for EMULATOR mode at ${emulatorHost}`);
-    }
-  } else {
-    app = getApps()[0]!;
-  }
-  return app;
+// Initialize Firebase App
+const app: FirebaseApp = getApps().length === 0 
+  ? initializeApp(firebaseConfig) 
+  : getApp();
+
+if (useEmulators) {
+  console.log(`🔧 Firebase configured for EMULATOR mode at ${emulatorHost}`);
 }
 
-export function getFirebaseAuth(): Auth {
-  if (!auth) {
-    const firebaseApp = initializeFirebase();
-    auth = getAuth(firebaseApp);
-    if (useEmulators) {
-      connectAuthEmulator(auth, `http://${emulatorHost}:${EMULATOR_PORTS.auth}`, {
-        disableWarnings: true,
-      });
-      console.log(`  ✓ Auth Emulator: http://${emulatorHost}:${EMULATOR_PORTS.auth}`);
-    }
+// Initialize Auth with proper persistence for React Native
+export const auth: Auth = Platform.OS === 'web'
+  ? getAuth(app)
+  : initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+
+// Connect Auth Emulator
+if (useEmulators) {
+  try {
+    connectAuthEmulator(auth, `http://${emulatorHost}:${EMULATOR_PORTS.auth}`, {
+      disableWarnings: true,
+    });
+    console.log(`  ✓ Auth Emulator: http://${emulatorHost}:${EMULATOR_PORTS.auth}`);
+  } catch (e) {
+    // Emulator already connected
   }
+}
+
+// Initialize Firestore
+export const db: Firestore = getFirestore(app);
+
+if (useEmulators) {
+  try {
+    connectFirestoreEmulator(db, emulatorHost, EMULATOR_PORTS.firestore);
+    console.log(`  ✓ Firestore Emulator: ${emulatorHost}:${EMULATOR_PORTS.firestore}`);
+  } catch (e) {
+    // Emulator already connected
+  }
+}
+
+// Initialize Functions
+export const functions: Functions = getFunctions(app, FUNCTIONS_REGION);
+
+if (useEmulators) {
+  try {
+    connectFunctionsEmulator(functions, emulatorHost, EMULATOR_PORTS.functions);
+    console.log(`  ✓ Functions Emulator: ${emulatorHost}:${EMULATOR_PORTS.functions}`);
+  } catch (e) {
+    // Emulator already connected
+  }
+}
+
+// ============================================================================
+// LEGACY EXPORTS (for backward compatibility)
+// ============================================================================
+
+/** @deprecated Use `auth` directly instead */
+export function getFirebaseAuth(): Auth {
   return auth;
 }
 
-export function getFirebaseFirestore(): Firestore {
-  if (!firestore) {
-    const firebaseApp = initializeFirebase();
-    firestore = getFirestore(firebaseApp);
-    if (useEmulators) {
-      connectFirestoreEmulator(firestore, emulatorHost, EMULATOR_PORTS.firestore);
-      console.log(`  ✓ Firestore Emulator: ${emulatorHost}:${EMULATOR_PORTS.firestore}`);
-    }
-  }
-  return firestore;
+/** @deprecated Use `auth` directly instead */
+export async function getFirebaseAuthAsync(): Promise<Auth> {
+  return auth;
 }
 
+/** @deprecated Use `db` directly instead */
+export function getFirebaseFirestore(): Firestore {
+  return db;
+}
+
+/** @deprecated Use `functions` directly instead */
 export function getFirebaseFunctions(): Functions {
-  if (!functions) {
-    const firebaseApp = initializeFirebase();
-    functions = getFunctions(firebaseApp, FUNCTIONS_REGION);
-    if (useEmulators) {
-      connectFunctionsEmulator(functions, emulatorHost, EMULATOR_PORTS.functions);
-      console.log(`  ✓ Functions Emulator: ${emulatorHost}:${EMULATOR_PORTS.functions}`);
-    }
-  }
   return functions;
+}
+
+/** @deprecated Use `app` directly instead */
+export function initializeFirebase(): FirebaseApp {
+  return app;
 }
 
 /**
@@ -95,5 +132,5 @@ export function isUsingEmulators(): boolean {
   return useEmulators;
 }
 
-// Initialize on import
-initializeFirebase();
+// Export app for other modules that might need it
+export { app };
