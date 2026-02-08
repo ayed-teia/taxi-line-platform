@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { DriverLiveLocation } from '../services/driver-location.service';
 import { TripData, getTripStatusDisplay } from '../services/trips.service';
+import { RoadblockData, getRoadblockStatusDisplay } from '../services/roadblocks.service';
 
 // Fix Leaflet default icon issue with bundlers (Vite/Webpack)
 // @ts-ignore
@@ -59,6 +60,9 @@ const DEFAULT_ZOOM = 13;
 interface DriverMapProps {
   drivers: DriverLiveLocation[];
   trips?: TripData[];
+  roadblocks?: RoadblockData[];
+  onMapClick?: (lat: number, lng: number) => void;
+  onRoadblockClick?: (roadblock: RoadblockData) => void;
 }
 
 /**
@@ -238,9 +242,99 @@ function TripMarker({ trip }: { trip: TripData }) {
 }
 
 /**
+ * Roadblock circle component
+ */
+function RoadblockMarker({ 
+  roadblock, 
+  onClick 
+}: { 
+  roadblock: RoadblockData; 
+  onClick?: (roadblock: RoadblockData) => void;
+}) {
+  const statusDisplay = getRoadblockStatusDisplay(roadblock.status);
+  
+  const formatRelativeTime = (date: Date | null) => {
+    if (!date) return 'N/A';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  return (
+    <Circle
+      center={[roadblock.lat, roadblock.lng]}
+      radius={roadblock.radiusMeters}
+      pathOptions={{
+        color: statusDisplay.color,
+        fillColor: statusDisplay.color,
+        fillOpacity: 0.3,
+        weight: 2,
+      }}
+      eventHandlers={{
+        click: () => onClick?.(roadblock),
+      }}
+    >
+      <Popup>
+        <div className="roadblock-popup">
+          <div className="roadblock-popup-header">
+            <span>{statusDisplay.emoji}</span>
+            <strong>Roadblock - {statusDisplay.label}</strong>
+          </div>
+          <div className="roadblock-popup-details">
+            <div className="popup-row">
+              <span className="popup-label">Radius:</span>
+              <span className="popup-value">{roadblock.radiusMeters}m</span>
+            </div>
+            {roadblock.note && (
+              <div className="popup-row">
+                <span className="popup-label">Note:</span>
+                <span className="popup-value">{roadblock.note}</span>
+              </div>
+            )}
+            <div className="popup-row">
+              <span className="popup-label">Updated:</span>
+              <span className="popup-value">{formatRelativeTime(roadblock.updatedAt)}</span>
+            </div>
+          </div>
+          {onClick && (
+            <button 
+              className="roadblock-edit-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick(roadblock);
+              }}
+            >
+              ✏️ Edit
+            </button>
+          )}
+        </div>
+      </Popup>
+    </Circle>
+  );
+}
+
+/**
+ * Map click handler component
+ */
+function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click: (e) => {
+      if (onMapClick) {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
+    },
+  });
+  return null;
+}
+
+/**
  * Main driver map component
  */
-export function DriverMap({ drivers, trips = [] }: DriverMapProps) {
+export function DriverMap({ drivers, trips = [], roadblocks = [], onMapClick, onRoadblockClick }: DriverMapProps) {
   // Track mounted state to prevent memory leaks
   const [isMounted, setIsMounted] = useState(true);
 
@@ -265,6 +359,15 @@ export function DriverMap({ drivers, trips = [] }: DriverMapProps) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <MapAutoCenter drivers={drivers} />
+      {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
+      {/* Roadblocks (render first so they appear under markers) */}
+      {roadblocks.map((roadblock) => (
+        <RoadblockMarker 
+          key={roadblock.id} 
+          roadblock={roadblock} 
+          onClick={onRoadblockClick}
+        />
+      ))}
       {drivers.map((driver) => (
         <AnimatedMarker key={driver.driverId} driver={driver} />
       ))}

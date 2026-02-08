@@ -169,3 +169,54 @@
   color: #666;
   margin: 2px 0;
 }
+
+/* Roadblock popup */
+.roadblock-popup {
+  min-width: 180px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+}
+
+.roadblock-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.roadblock-popup-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.roadblock-popup-details .popup-row {
+  display: flex;
+  gap: 8px;
+}
+
+.roadblock-popup-details .popup-label {
+  color: #888;
+  min-width: 60px;
+}
+
+.roadblock-popup-details .popup-value {
+  color: #333;
+}
+
+.roadblock-edit-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  width: 100%;
+}
+
+.roadblock-edit-btn:hover {
+  background: #2563eb;
+}

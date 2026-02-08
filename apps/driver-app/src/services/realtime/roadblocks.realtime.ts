@@ -1,0 +1,182 @@
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  Unsubscribe,
+  orderBy,
+} from 'firebase/firestore';
+import { getFirestoreAsync } from '../firebase';
+
+/**
+ * Roadblock data from Firestore
+ */
+export interface RoadblockData {
+  id: string;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  status: 'open' | 'closed' | 'delay';
+  note?: string;
+  updatedAt: Date | null;
+}
+
+/**
+ * Subscribe to active roadblocks (closed and delay only)
+ */
+export function subscribeToActiveRoadblocks(
+  onData: (roadblocks: RoadblockData[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  let unsubscribe: Unsubscribe | null = null;
+
+  getFirestoreAsync()
+    .then((db) => {
+      const roadblocksRef = collection(db, 'roadblocks');
+
+      // Query for active roadblocks (closed or delay)
+      const q = query(
+        roadblocksRef,
+        where('status', 'in', ['closed', 'delay']),
+        orderBy('updatedAt', 'desc')
+      );
+
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const roadblocks: RoadblockData[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              lat: data.lat,
+              lng: data.lng,
+              radiusMeters: data.radiusMeters ?? 100,
+              status: data.status ?? 'closed',
+              note: data.note,
+              updatedAt: data.updatedAt?.toDate() ?? null,
+            };
+          });
+          onData(roadblocks);
+        },
+        onError
+      );
+    })
+    .catch(onError);
+
+  // Return unsubscribe function
+  return () => {
+    if (unsubscribe) {
+      unsubscribe();
+    }
+  };
+}
+
+/**
+ * Calculate distance between two points using Haversine formula
+ * Returns distance in meters
+ */
+function haversineDistanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRadians(degrees: number): number {
+  return degrees * (Math.PI / 180);
+}
+
+/**
+ * Check if a point is within a roadblock's radius
+ */
+export function isPointInRoadblock(
+  pointLat: number,
+  pointLng: number,
+  roadblock: RoadblockData
+): boolean {
+  const distance = haversineDistanceMeters(
+    pointLat,
+    pointLng,
+    roadblock.lat,
+    roadblock.lng
+  );
+  return distance <= roadblock.radiusMeters;
+}
+
+/**
+ * Check if a route (from pickup to dropoff) intersects any closed roadblocks
+ * Uses simplified line-circle intersection by checking points along the route
+ */
+export function checkRouteIntersectsRoadblocks(
+  pickup: { lat: number; lng: number },
+  dropoff: { lat: number; lng: number },
+  roadblocks: RoadblockData[]
+): RoadblockData[] {
+  const intersectingRoadblocks: RoadblockData[] = [];
+
+  // Only check closed roadblocks
+  const closedRoadblocks = roadblocks.filter(r => r.status === 'closed');
+
+  for (const roadblock of closedRoadblocks) {
+    // Check pickup point
+    if (isPointInRoadblock(pickup.lat, pickup.lng, roadblock)) {
+      intersectingRoadblocks.push(roadblock);
+      continue;
+    }
+
+    // Check dropoff point
+    if (isPointInRoadblock(dropoff.lat, dropoff.lng, roadblock)) {
+      intersectingRoadblocks.push(roadblock);
+      continue;
+    }
+
+    // Check intermediate points along the route (10 points)
+    const steps = 10;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const lat = pickup.lat + (dropoff.lat - pickup.lat) * t;
+      const lng = pickup.lng + (dropoff.lng - pickup.lng) * t;
+
+      if (isPointInRoadblock(lat, lng, roadblock)) {
+        intersectingRoadblocks.push(roadblock);
+        break;
+      }
+    }
+  }
+
+  return intersectingRoadblocks;
+}
+
+/**
+ * Get roadblock status display info
+ */
+export function getRoadblockStatusDisplay(status: string): {
+  label: string;
+  color: string;
+  emoji: string;
+} {
+  switch (status) {
+    case 'open':
+      return { label: 'Open', color: '#10b981', emoji: '✅' };
+    case 'closed':
+      return { label: 'Closed', color: '#ef4444', emoji: '🚫' };
+    case 'delay':
+      return { label: 'Delay', color: '#f59e0b', emoji: '⚠️' };
+    default:
+      return { label: status, color: '#6b7280', emoji: '❓' };
+  }
+}

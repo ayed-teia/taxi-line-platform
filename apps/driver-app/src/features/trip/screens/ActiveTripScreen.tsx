@@ -1,8 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { TripStatus } from '@taxi-line/shared';
 import { Button } from '../../../ui';
 import { driverArrived, startTrip, completeTrip, confirmCashPayment } from '../../../services/api';
+import { 
+  subscribeToActiveRoadblocks, 
+  checkRouteIntersectsRoadblocks,
+  RoadblockData 
+} from '../../../services/realtime';
 
 interface ActiveTripScreenProps {
   tripId: string;
@@ -10,6 +15,8 @@ interface ActiveTripScreenProps {
   estimatedPriceIls?: number;
   fareAmount?: number;
   paymentStatus?: 'pending' | 'paid';
+  pickup?: { lat: number; lng: number };
+  dropoff?: { lat: number; lng: number };
   onTripCompleted: () => void;
   onPaymentConfirmed?: () => void;
 }
@@ -24,11 +31,41 @@ export function ActiveTripScreen({
   estimatedPriceIls,
   fareAmount,
   paymentStatus = 'pending',
+  pickup,
+  dropoff,
   onTripCompleted,
   onPaymentConfirmed
 }: ActiveTripScreenProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCollectingPayment, setIsCollectingPayment] = useState(false);
+  const [roadblocks, setRoadblocks] = useState<RoadblockData[]>([]);
+  const [intersectingRoadblocks, setIntersectingRoadblocks] = useState<RoadblockData[]>([]);
+
+  // Subscribe to roadblocks
+  useEffect(() => {
+    const unsubscribe = subscribeToActiveRoadblocks(
+      (data) => {
+        setRoadblocks(data);
+      },
+      (error) => {
+        console.error('❌ [ActiveTrip] Roadblocks subscription error:', error);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Check for route intersection with closed roadblocks
+  useEffect(() => {
+    if (pickup && dropoff && roadblocks.length > 0) {
+      const intersecting = checkRouteIntersectsRoadblocks(pickup, dropoff, roadblocks);
+      setIntersectingRoadblocks(intersecting);
+      if (intersecting.length > 0) {
+        console.log('🚧 [ActiveTrip] Route intersects roadblocks:', intersecting.length);
+      }
+    } else {
+      setIntersectingRoadblocks([]);
+    }
+  }, [pickup, dropoff, roadblocks]);
 
   const getStatusDisplay = (tripStatus: TripStatus) => {
     switch (tripStatus) {
@@ -89,10 +126,34 @@ export function ActiveTripScreen({
 
   return (
     <View style={styles.container}>
+      {/* Roadblock Warning Banner */}
+      {intersectingRoadblocks.length > 0 && (
+        <View style={styles.roadblockBanner}>
+          <Text style={styles.roadblockBannerIcon}>🚧</Text>
+          <View style={styles.roadblockBannerText}>
+            <Text style={styles.roadblockBannerTitle}>Road Closure Ahead</Text>
+            <Text style={styles.roadblockBannerMessage}>
+              {intersectingRoadblocks.length === 1 
+                ? 'Your route passes through a closed road'
+                : `Your route passes through ${intersectingRoadblocks.length} closed roads`}
+            </Text>
+            {intersectingRoadblocks[0]?.note && (
+              <Text style={styles.roadblockNote}>{intersectingRoadblocks[0].note}</Text>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Map placeholder */}
       <View style={styles.mapPlaceholder}>
         <Text style={styles.mapEmoji}>🗺️</Text>
         <Text style={styles.routeText}>Route to destination</Text>
+        {/* Roadblock indicators on map placeholder */}
+        {roadblocks.length > 0 && (
+          <View style={styles.roadblockIndicator}>
+            <Text style={styles.roadblockIndicatorText}>🚧 {roadblocks.length} roadblock(s)</Text>
+          </View>
+        )}
       </View>
 
       {/* Trip info card */}
@@ -275,5 +336,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#34C759',
     marginTop: 8,
+  },
+  roadblockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF3B30',
+    padding: 12,
+    paddingHorizontal: 16,
+  },
+  roadblockBannerIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  roadblockBannerText: {
+    flex: 1,
+  },
+  roadblockBannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  roadblockBannerMessage: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  roadblockNote: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    opacity: 0.8,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  roadblockIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roadblockIndicatorText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });

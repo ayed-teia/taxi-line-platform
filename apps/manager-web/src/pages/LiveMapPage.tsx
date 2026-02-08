@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { subscribeToAllDriverLocations, DriverLiveLocation, getUniqueLineIds } from '../services/driver-location.service';
 import { subscribeToActiveTrips, subscribeToPendingTrips, subscribeToCompletedTrips, TripData, getTripStatusDisplay, getPaymentStatusDisplay } from '../services/trips.service';
+import { subscribeToRoadblocks, createRoadblock, updateRoadblock, deleteRoadblock, RoadblockData, getRoadblockStatusDisplay } from '../services/roadblocks.service';
 import { DriverMap } from '../components/DriverMap';
 import '../components/DriverMap.css';
 import './LiveMapPage.css';
@@ -10,6 +11,7 @@ export function LiveMapPage() {
   const [activeTrips, setActiveTrips] = useState<TripData[]>([]);
   const [pendingTrips, setPendingTrips] = useState<TripData[]>([]);
   const [completedTrips, setCompletedTrips] = useState<TripData[]>([]);
+  const [roadblocks, setRoadblocks] = useState<RoadblockData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -17,6 +19,17 @@ export function LiveMapPage() {
   const [showOnlineOnly, setShowOnlineOnly] = useState(true);
   const [selectedLineId, setSelectedLineId] = useState<string>('all');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+
+  // Roadblock modal state
+  const [showRoadblockModal, setShowRoadblockModal] = useState(false);
+  const [editingRoadblock, setEditingRoadblock] = useState<RoadblockData | null>(null);
+  const [newRoadblockLocation, setNewRoadblockLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [roadblockForm, setRoadblockForm] = useState({
+    status: 'closed' as 'open' | 'closed' | 'delay',
+    radiusMeters: 100,
+    note: '',
+  });
+  const [isSavingRoadblock, setIsSavingRoadblock] = useState(false);
 
   // Track if component is mounted to prevent memory leaks
   const isMounted = useRef(true);
@@ -78,6 +91,18 @@ export function LiveMapPage() {
       }
     );
 
+    // Subscribe to roadblocks
+    const unsubRoadblocks = subscribeToRoadblocks(
+      (data) => {
+        if (isMounted.current) {
+          setRoadblocks(data);
+        }
+      },
+      (err) => {
+        console.error('Error subscribing to roadblocks:', err);
+      }
+    );
+
     // Cleanup: unsubscribe and mark as unmounted
     return () => {
       isMounted.current = false;
@@ -85,6 +110,7 @@ export function LiveMapPage() {
       unsubActiveTrips();
       unsubPendingTrips();
       unsubCompletedTrips();
+      unsubRoadblocks();
     };
   }, []);
 
@@ -111,6 +137,72 @@ export function LiveMapPage() {
     }
     return completedTrips;
   }, [completedTrips, showUnpaidOnly]);
+
+  // Count active roadblocks
+  const activeRoadblocksCount = useMemo(() => {
+    return roadblocks.filter(r => r.status !== 'open').length;
+  }, [roadblocks]);
+
+  // Roadblock handlers
+  const handleMapClick = useCallback((lat: number, lng: number) => {
+    setNewRoadblockLocation({ lat, lng });
+    setEditingRoadblock(null);
+    setRoadblockForm({ status: 'closed', radiusMeters: 100, note: '' });
+    setShowRoadblockModal(true);
+  }, []);
+
+  const handleRoadblockClick = useCallback((roadblock: RoadblockData) => {
+    setEditingRoadblock(roadblock);
+    setNewRoadblockLocation(null);
+    setRoadblockForm({
+      status: roadblock.status,
+      radiusMeters: roadblock.radiusMeters,
+      note: roadblock.note || '',
+    });
+    setShowRoadblockModal(true);
+  }, []);
+
+  const handleSaveRoadblock = async () => {
+    setIsSavingRoadblock(true);
+    try {
+      if (editingRoadblock) {
+        // Update existing
+        await updateRoadblock(editingRoadblock.id, roadblockForm);
+      } else if (newRoadblockLocation) {
+        // Create new
+        await createRoadblock({
+          lat: newRoadblockLocation.lat,
+          lng: newRoadblockLocation.lng,
+          ...roadblockForm,
+        });
+      }
+      setShowRoadblockModal(false);
+      setEditingRoadblock(null);
+      setNewRoadblockLocation(null);
+    } catch (err) {
+      console.error('Failed to save roadblock:', err);
+      alert('Failed to save roadblock');
+    } finally {
+      setIsSavingRoadblock(false);
+    }
+  };
+
+  const handleDeleteRoadblock = async () => {
+    if (!editingRoadblock) return;
+    if (!confirm('Are you sure you want to delete this roadblock?')) return;
+    
+    setIsSavingRoadblock(true);
+    try {
+      await deleteRoadblock(editingRoadblock.id);
+      setShowRoadblockModal(false);
+      setEditingRoadblock(null);
+    } catch (err) {
+      console.error('Failed to delete roadblock:', err);
+      alert('Failed to delete roadblock');
+    } finally {
+      setIsSavingRoadblock(false);
+    }
+  };
 
   // Apply filters
   const filteredDrivers = useMemo(() => {
@@ -202,6 +294,10 @@ export function LiveMapPage() {
             <span className="stat-label">💰 Unpaid</span>
           </div>
         )}
+        <div className="stat roadblocks">
+          <span className="stat-value">{activeRoadblocksCount}</span>
+          <span className="stat-label">🚧 Roadblocks</span>
+        </div>
       </div>
 
       {/* Filters */}
@@ -265,9 +361,16 @@ export function LiveMapPage() {
         </div>
       ) : (
         <>
-          {/* Live Map with Driver Markers and Trips */}
+          {/* Live Map with Driver Markers, Trips, and Roadblocks */}
           <div className="map-container">
-            <DriverMap drivers={filteredDrivers} trips={[...activeTrips, ...pendingTrips]} />
+            <div className="map-hint">💡 Click on map to add roadblock</div>
+            <DriverMap 
+              drivers={filteredDrivers} 
+              trips={[...activeTrips, ...pendingTrips]}
+              roadblocks={roadblocks}
+              onMapClick={handleMapClick}
+              onRoadblockClick={handleRoadblockClick}
+            />
           </div>
 
           {/* Driver list */}
@@ -440,7 +543,132 @@ export function LiveMapPage() {
               </table>
             </div>
           )}
+
+          {/* Roadblocks List */}
+          {roadblocks.length > 0 && (
+            <div className="roadblocks-list">
+              <h3>🚧 Roadblocks ({roadblocks.length})</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Radius</th>
+                    <th>Note</th>
+                    <th>Updated</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roadblocks.map((roadblock) => {
+                    const statusDisplay = getRoadblockStatusDisplay(roadblock.status);
+                    return (
+                      <tr key={roadblock.id} className={`roadblock-row ${roadblock.status}`}>
+                        <td>
+                          <span className="roadblock-status" style={{ color: statusDisplay.color }}>
+                            {statusDisplay.emoji} {statusDisplay.label}
+                          </span>
+                        </td>
+                        <td className="coordinates">
+                          {roadblock.lat.toFixed(5)}, {roadblock.lng.toFixed(5)}
+                        </td>
+                        <td>{roadblock.radiusMeters}m</td>
+                        <td className="note-cell">{roadblock.note || '—'}</td>
+                        <td>{formatRelativeTime(roadblock.updatedAt)}</td>
+                        <td>
+                          <button 
+                            className="action-btn edit"
+                            onClick={() => handleRoadblockClick(roadblock)}
+                          >
+                            ✏️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
+      )}
+
+      {/* Roadblock Modal */}
+      {showRoadblockModal && (
+        <div className="modal-overlay" onClick={() => setShowRoadblockModal(false)}>
+          <div className="modal-content roadblock-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingRoadblock ? '✏️ Edit Roadblock' : '🚧 Add Roadblock'}</h3>
+            
+            <div className="form-group">
+              <label>Status</label>
+              <select
+                value={roadblockForm.status}
+                onChange={(e) => setRoadblockForm(f => ({ ...f, status: e.target.value as 'open' | 'closed' | 'delay' }))}
+              >
+                <option value="closed">🚫 Closed</option>
+                <option value="delay">⚠️ Delay</option>
+                <option value="open">✅ Open (Cleared)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Radius (meters)</label>
+              <input
+                type="number"
+                value={roadblockForm.radiusMeters}
+                onChange={(e) => setRoadblockForm(f => ({ ...f, radiusMeters: parseInt(e.target.value) || 100 }))}
+                min={10}
+                max={1000}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Note</label>
+              <textarea
+                value={roadblockForm.note}
+                onChange={(e) => setRoadblockForm(f => ({ ...f, note: e.target.value }))}
+                placeholder="Optional description..."
+                rows={3}
+              />
+            </div>
+
+            {(editingRoadblock || newRoadblockLocation) && (
+              <div className="form-group location-display">
+                <label>Location</label>
+                <span className="location-coords">
+                  {(editingRoadblock?.lat ?? newRoadblockLocation?.lat)?.toFixed(5)}, 
+                  {(editingRoadblock?.lng ?? newRoadblockLocation?.lng)?.toFixed(5)}
+                </span>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              {editingRoadblock && (
+                <button 
+                  className="btn-delete"
+                  onClick={handleDeleteRoadblock}
+                  disabled={isSavingRoadblock}
+                >
+                  🗑️ Delete
+                </button>
+              )}
+              <button 
+                className="btn-cancel"
+                onClick={() => setShowRoadblockModal(false)}
+                disabled={isSavingRoadblock}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-save"
+                onClick={handleSaveRoadblock}
+                disabled={isSavingRoadblock}
+              >
+                {isSavingRoadblock ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

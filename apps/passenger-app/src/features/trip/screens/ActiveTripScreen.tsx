@@ -1,14 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TripStatus } from '@taxi-line/shared';
 import { Button } from '../../../ui';
-import { DriverLocation } from '../../../services/realtime';
+import { DriverLocation, subscribeToActiveRoadblocks, checkRouteIntersectsRoadblocks, RoadblockData } from '../../../services/realtime';
+
+interface LocationCoords {
+  lat: number;
+  lng: number;
+}
 
 interface ActiveTripScreenProps {
   tripId: string;
   status: TripStatus;
   estimatedPriceIls?: number;
   driverLocation?: DriverLocation | null;
+  pickup?: LocationCoords;
+  dropoff?: LocationCoords;
   onCancel: () => void;
   onGoHome?: () => void;
 }
@@ -22,9 +29,34 @@ export function ActiveTripScreen({
   status, 
   estimatedPriceIls,
   driverLocation,
+  pickup,
+  dropoff,
   onCancel,
   onGoHome 
 }: ActiveTripScreenProps) {
+  // Roadblock state
+  const [roadblocks, setRoadblocks] = useState<RoadblockData[]>([]);
+  const [intersectingRoadblocks, setIntersectingRoadblocks] = useState<RoadblockData[]>([]);
+
+  // Subscribe to active roadblocks
+  useEffect(() => {
+    const unsubscribe = subscribeToActiveRoadblocks(
+      (data) => setRoadblocks(data),
+      (error) => console.error('❌ [ActiveTrip] Roadblocks subscription error:', error)
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Check for route intersection with closed roadblocks
+  useEffect(() => {
+    if (pickup && dropoff && roadblocks.length > 0) {
+      const intersecting = checkRouteIntersectsRoadblocks(pickup, dropoff, roadblocks);
+      setIntersectingRoadblocks(intersecting);
+    } else {
+      setIntersectingRoadblocks([]);
+    }
+  }, [pickup, dropoff, roadblocks]);
+
   const getStatusDisplay = (status: TripStatus) => {
     switch (status) {
       case 'pending':
@@ -55,6 +87,24 @@ export function ActiveTripScreen({
 
   return (
     <View style={styles.container}>
+      {/* Roadblock Warning Banner */}
+      {intersectingRoadblocks.length > 0 && (
+        <View style={styles.roadblockBanner}>
+          <Text style={styles.roadblockBannerIcon}>🚧</Text>
+          <View style={styles.roadblockBannerText}>
+            <Text style={styles.roadblockBannerTitle}>Road Closure Ahead</Text>
+            <Text style={styles.roadblockBannerMessage}>
+              {intersectingRoadblocks.length === 1 
+                ? 'Your route may be affected by a road closure'
+                : `Your route may be affected by ${intersectingRoadblocks.length} road closures`}
+            </Text>
+            {intersectingRoadblocks[0]?.note && (
+              <Text style={styles.roadblockNote}>{intersectingRoadblocks[0].note}</Text>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Map placeholder with driver location */}
       <View style={styles.mapPlaceholder}>
         <Text style={styles.mapEmoji}>🗺️</Text>
@@ -69,6 +119,12 @@ export function ActiveTripScreen({
                 {Math.round(driverLocation.speed * 3.6)} km/h
               </Text>
             )}
+          </View>
+        )}
+        {/* Roadblock indicators on map */}
+        {roadblocks.length > 0 && (
+          <View style={styles.roadblockIndicator}>
+            <Text style={styles.roadblockIndicatorText}>🚧 {roadblocks.length} roadblock(s)</Text>
           </View>
         )}
       </View>
@@ -191,5 +247,50 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#34C759',
     marginTop: 8,
+  },
+  roadblockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF3B30',
+    padding: 12,
+    paddingHorizontal: 16,
+  },
+  roadblockBannerIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  roadblockBannerText: {
+    flex: 1,
+  },
+  roadblockBannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  roadblockBannerMessage: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  roadblockNote: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    opacity: 0.8,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  roadblockIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roadblockIndicatorText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });
