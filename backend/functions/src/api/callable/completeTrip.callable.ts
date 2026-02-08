@@ -132,6 +132,16 @@ export const completeTrip = onCall<unknown, Promise<CompleteTripResponse>>(
           updatedAt: FieldValue.serverTimestamp(),
         });
 
+        // Set driver as available again (trip completed)
+        const driverDocRef = db.collection('drivers').doc(driverId);
+        transaction.set(driverDocRef, {
+          isAvailable: true,
+          currentTripId: null,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        logger.info('🚗 [CompleteTrip] Driver isAvailable → true', { driverId });
+
         return { status: TripStatus.COMPLETED, finalPriceIls };
       });
 

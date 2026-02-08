@@ -126,15 +126,24 @@ service cloud.firestore {
     // Path: /drivers/{driverId}
     // Path: /drivers/{driverId}/inbox/{requestId}
     // 
-    // Driver profiles and their inbox for trip request notifications.
-    // - Cloud Functions write to inbox
-    // - Drivers can read their own inbox
+    // Driver availability and profile data:
+    // - isOnline: boolean - Driver has toggled to online
+    // - isAvailable: boolean - Driver can receive new trips (set by Cloud Functions)
+    // - lastLocation: GeoPoint - Last known location
+    // - currentTripId: string | null - Current trip if on one
+    // - updatedAt: Timestamp
+    // 
+    // WRITE RULES:
+    // - Driver can set isOnline and lastLocation (going online/offline)
+    // - Cloud Functions set isAvailable (accept trip = false, complete = true)
+    // - Cloud Functions use Admin SDK which bypasses security rules
     // =========================================================================
     match /drivers/{driverId} {
       // Driver can read their own profile, managers can read all
       allow read: if isOwner(driverId) || isManager();
       
-      // Driver can update their own profile (isOnline status)
+      // Driver can update their own document (isOnline, lastLocation)
+      // Note: isAvailable is managed by Cloud Functions via Admin SDK
       allow write: if isOwner(driverId) && isDriver();
       
       // Inbox subcollection

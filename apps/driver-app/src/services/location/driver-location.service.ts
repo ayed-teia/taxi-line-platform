@@ -109,6 +109,14 @@ export async function removeDriverLocation(driverId: string): Promise<void> {
 /**
  * Set driver availability status
  * This write is allowed by Firestore rules for the driver's own document
+ * 
+ * Collection: drivers/{driverId}
+ * 
+ * Fields:
+ * - isOnline: boolean - Driver has toggled to online
+ * - isAvailable: boolean - Driver can receive new trips (online + not on a trip)
+ * - lastLocation: GeoPoint - Last known location
+ * - updatedAt: Timestamp
  */
 export async function setDriverAvailability(
   driverId: string,
@@ -117,30 +125,32 @@ export async function setDriverAvailability(
 ): Promise<void> {
   try {
     const db = await getFirestoreAsync();
-    const availabilityRef = doc(db, 'driverAvailability', driverId);
+    const driverRef = doc(db, 'drivers', driverId);
 
     if (isOnline) {
-      await setDoc(availabilityRef, {
+      await setDoc(driverRef, {
         driverId,
         isOnline: true,
+        isAvailable: true, // When going online, driver is available for trips
         lastLocation: currentLocation
           ? new GeoPoint(currentLocation.lat, currentLocation.lng)
           : null,
         onlineSince: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      console.log('[DriverLocation] Driver is now ONLINE:', driverId);
+      }, { merge: true });
+      console.log('🟢 [Driver] Online + Available:', driverId);
     } else {
-      await setDoc(availabilityRef, {
+      await setDoc(driverRef, {
         driverId,
         isOnline: false,
+        isAvailable: false, // When going offline, driver is not available
         offlineSince: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      console.log('[DriverLocation] Driver is now OFFLINE:', driverId);
+      }, { merge: true });
+      console.log('⚫ [Driver] Offline:', driverId);
     }
   } catch (error) {
-    console.error('[DriverLocation] Error setting availability:', error);
+    console.error('[Driver] Error setting availability:', error);
     throw error;
   }
 }

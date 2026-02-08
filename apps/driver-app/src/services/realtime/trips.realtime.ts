@@ -27,9 +27,26 @@ export interface TripData {
   status: string;
   createdAt?: Date;
   matchedAt?: Date;
+  acceptedAt?: Date;
   arrivedAt?: Date;
   startedAt?: Date;
   completedAt?: Date;
+}
+
+/**
+ * Incoming trip request from trips collection
+ */
+export interface IncomingTripRequest {
+  tripId: string;
+  passengerId: string;
+  pickup: { lat: number; lng: number };
+  dropoff: { lat: number; lng: number };
+  estimatedPriceIls: number;
+  estimatedDistanceKm: number;
+  estimatedDurationMin: number;
+  pickupDistanceKm: number;
+  status: string;
+  createdAt: Date | null;
 }
 
 /**
@@ -70,6 +87,134 @@ export function subscribeToTripRequests(
 
   return () => {
     if (unsubscribe) {
+      unsubscribe();
+    }
+  };
+}
+
+/**
+ * Haversine formula to calculate distance between two points (km)
+ */
+function calculateDistance(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+  return R * c;
+}
+
+/**
+ * Subscribe to incoming trip requests for the driver
+ * 
+ * Listens to trips where:
+ * - driverId == current driver
+ * - status == 'pending'
+ * 
+ * Shows incoming trip modal when a new request arrives.
+ * 
+ * @param driverId - The driver's user ID
+ * @param driverLocation - Driver's current location for distance calculation
+ * @param onRequest - Callback when a new trip request arrives
+ * @param onNoRequest - Callback when no pending requests
+ * @param onError - Error callback
+ * @returns Unsubscribe function
+ */
+export function subscribeToIncomingTrips(
+  driverId: string,
+  driverLocation: { lat: number; lng: number } | null,
+  onRequest: (request: IncomingTripRequest) => void,
+  onNoRequest: () => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  let unsubscribe: Unsubscribe | null = null;
+
+  console.log('🎧 [IncomingTrips] Starting listener for driver:', driverId);
+
+  getFirestoreAsync()
+    .then((db) => {
+      const tripsRef = collection(db, 'trips');
+
+      // Query for pending trips assigned to this driver
+      const q = query(
+        tripsRef,
+        where('driverId', '==', driverId),
+        where('status', '==', 'pending'),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot: QuerySnapshot<DocumentData>) => {
+          if (snapshot.empty) {
+            console.log('📭 [IncomingTrips] No pending requests');
+            onNoRequest();
+            return;
+          }
+
+          const docSnap = snapshot.docs[0]!;
+          const data = docSnap.data();
+
+          // Calculate distance from driver to pickup
+          let pickupDistanceKm = 0;
+          if (driverLocation) {
+            pickupDistanceKm = calculateDistance(
+              driverLocation.lat,
+              driverLocation.lng,
+              data.pickup.lat,
+              data.pickup.lng
+            );
+          }
+
+          const request: IncomingTripRequest = {
+            tripId: docSnap.id,
+            passengerId: data.passengerId,
+            pickup: data.pickup,
+            dropoff: data.dropoff,
+            estimatedPriceIls: data.estimatedPriceIls,
+            estimatedDistanceKm: data.estimatedDistanceKm,
+            estimatedDurationMin: data.estimatedDurationMin,
+            pickupDistanceKm: Math.round(pickupDistanceKm * 10) / 10,
+            status: data.status,
+            createdAt: data.createdAt?.toDate() ?? null,
+          };
+
+          console.log('📥 [IncomingTrips] New request received:', request.tripId);
+          console.log('   📍 Pickup distance:', pickupDistanceKm.toFixed(2), 'km');
+          console.log('   💵 Estimated price: ₪' + request.estimatedPriceIls);
+
+          onRequest(request);
+        },
+        (error) => {
+          console.error('❌ [IncomingTrips] Listener error:', error);
+          onError(error);
+        }
+      );
+
+      console.log('✅ [IncomingTrips] Listener STARTED for driver:', driverId);
+    })
+    .catch((error) => {
+      console.error('❌ [IncomingTrips] Failed to start listener:', error);
+      onError(error);
+    });
+
+  return () => {
+    if (unsubscribe) {
+      console.log('🔇 [IncomingTrips] Listener STOPPED for driver:', driverId);
       unsubscribe();
     }
   };

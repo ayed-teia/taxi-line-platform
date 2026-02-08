@@ -1,11 +1,14 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { subscribeToAllDriverLocations, DriverLiveLocation, getUniqueLineIds } from '../services/driver-location.service';
+import { subscribeToActiveTrips, subscribeToPendingTrips, TripData, getTripStatusDisplay } from '../services/trips.service';
 import { DriverMap } from '../components/DriverMap';
 import '../components/DriverMap.css';
 import './LiveMapPage.css';
 
 export function LiveMapPage() {
   const [drivers, setDrivers] = useState<DriverLiveLocation[]>([]);
+  const [activeTrips, setActiveTrips] = useState<TripData[]>([]);
+  const [pendingTrips, setPendingTrips] = useState<TripData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -19,7 +22,8 @@ export function LiveMapPage() {
   useEffect(() => {
     isMounted.current = true;
 
-    const unsubscribe = subscribeToAllDriverLocations(
+    // Subscribe to driver locations
+    const unsubDrivers = subscribeToAllDriverLocations(
       (driverLocations) => {
         if (isMounted.current) {
           setDrivers(driverLocations);
@@ -36,15 +40,49 @@ export function LiveMapPage() {
       }
     );
 
+    // Subscribe to active trips
+    const unsubActiveTrips = subscribeToActiveTrips(
+      (trips) => {
+        if (isMounted.current) {
+          setActiveTrips(trips);
+        }
+      },
+      (err) => {
+        console.error('Error subscribing to active trips:', err);
+      }
+    );
+
+    // Subscribe to pending trips
+    const unsubPendingTrips = subscribeToPendingTrips(
+      (trips) => {
+        if (isMounted.current) {
+          setPendingTrips(trips);
+        }
+      },
+      (err) => {
+        console.error('Error subscribing to pending trips:', err);
+      }
+    );
+
     // Cleanup: unsubscribe and mark as unmounted
     return () => {
       isMounted.current = false;
-      unsubscribe();
+      unsubDrivers();
+      unsubActiveTrips();
+      unsubPendingTrips();
     };
   }, []);
 
   // Get unique line IDs for filter dropdown
   const lineIds = useMemo(() => getUniqueLineIds(drivers), [drivers]);
+
+  // Count drivers by availability
+  const driverStats = useMemo(() => {
+    const online = drivers.filter(d => d.isOnline).length;
+    const available = drivers.filter(d => d.isOnline && d.isAvailable).length;
+    const busy = drivers.filter(d => d.isOnline && !d.isAvailable).length;
+    return { online, available, busy };
+  }, [drivers]);
 
   // Apply filters
   const filteredDrivers = useMemo(() => {
@@ -104,22 +142,30 @@ export function LiveMapPage() {
 
   return (
     <div className="live-map-page">
-      <h2>📍 Live Driver Locations</h2>
+      <h2>📍 Live Dashboard</h2>
       
       {/* Stats bar */}
       <div className="stats-bar">
         <div className="stat">
-          <span className="stat-value">{drivers.length}</span>
-          <span className="stat-label">Total Online</span>
+          <span className="stat-value">{driverStats.online}</span>
+          <span className="stat-label">🟢 Online</span>
         </div>
-        <div className="stat">
-          <span className="stat-value">{filteredDrivers.length}</span>
-          <span className="stat-label">Showing</span>
+        <div className="stat available">
+          <span className="stat-value">{driverStats.available}</span>
+          <span className="stat-label">✅ Available</span>
         </div>
-        {lineIds.length > 0 && (
-          <div className="stat">
-            <span className="stat-value">{lineIds.length}</span>
-            <span className="stat-label">Lines Active</span>
+        <div className="stat busy">
+          <span className="stat-value">{driverStats.busy}</span>
+          <span className="stat-label">🚗 Busy</span>
+        </div>
+        <div className="stat trips">
+          <span className="stat-value">{activeTrips.length}</span>
+          <span className="stat-label">🛣️ Active Trips</span>
+        </div>
+        {pendingTrips.length > 0 && (
+          <div className="stat pending">
+            <span className="stat-value">{pendingTrips.length}</span>
+            <span className="stat-label">⏳ Pending</span>
           </div>
         )}
       </div>
@@ -174,9 +220,9 @@ export function LiveMapPage() {
         </div>
       ) : (
         <>
-          {/* Live Map with Driver Markers */}
+          {/* Live Map with Driver Markers and Trips */}
           <div className="map-container">
-            <DriverMap drivers={filteredDrivers} />
+            <DriverMap drivers={filteredDrivers} trips={[...activeTrips, ...pendingTrips]} />
           </div>
 
           {/* Driver list */}
@@ -188,6 +234,7 @@ export function LiveMapPage() {
                   <th>Driver</th>
                   <th>Line</th>
                   <th>Status</th>
+                  <th>Availability</th>
                   <th>Location</th>
                   <th>Speed</th>
                   <th>Last Update</th>
@@ -215,6 +262,11 @@ export function LiveMapPage() {
                         {driver.isOnline ? '● Online' : '○ Offline'}
                       </span>
                     </td>
+                    <td>
+                      <span className={`status-badge ${driver.isAvailable ? 'available' : 'busy'}`}>
+                        {driver.isAvailable ? '✅ Available' : '🚗 Busy'}
+                      </span>
+                    </td>
                     <td className="coordinates">
                       {driver.lat.toFixed(5)}, {driver.lng.toFixed(5)}
                     </td>
@@ -228,6 +280,80 @@ export function LiveMapPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Active Trips */}
+          {activeTrips.length > 0 && (
+            <div className="trips-list">
+              <h3>🛣️ Active Trips ({activeTrips.length})</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Trip ID</th>
+                    <th>Status</th>
+                    <th>Driver</th>
+                    <th>Price</th>
+                    <th>Distance</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTrips.map((trip) => {
+                    const statusDisplay = getTripStatusDisplay(trip.status);
+                    return (
+                      <tr key={trip.tripId}>
+                        <td className="trip-id">{trip.tripId.slice(0, 8)}...</td>
+                        <td>
+                          <span className="trip-status" style={{ color: statusDisplay.color }}>
+                            {statusDisplay.emoji} {statusDisplay.label}
+                          </span>
+                        </td>
+                        <td>{trip.driverId?.slice(0, 8) ?? '—'}</td>
+                        <td>₪{trip.estimatedPriceIls}</td>
+                        <td>{trip.estimatedDistanceKm.toFixed(1)} km</td>
+                        <td>{formatRelativeTime(trip.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pending/Unmatched Trips */}
+          {pendingTrips.length > 0 && (
+            <div className="trips-list pending-trips">
+              <h3>⏳ Pending Requests ({pendingTrips.length})</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Trip ID</th>
+                    <th>Status</th>
+                    <th>Assigned Driver</th>
+                    <th>Price</th>
+                    <th>Waiting Since</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingTrips.map((trip) => {
+                    const statusDisplay = getTripStatusDisplay(trip.status);
+                    return (
+                      <tr key={trip.tripId}>
+                        <td className="trip-id">{trip.tripId.slice(0, 8)}...</td>
+                        <td>
+                          <span className="trip-status" style={{ color: statusDisplay.color }}>
+                            {statusDisplay.emoji} {statusDisplay.label}
+                          </span>
+                        </td>
+                        <td>{trip.driverId?.slice(0, 8) ?? '—'}</td>
+                        <td>₪{trip.estimatedPriceIls}</td>
+                        <td>{formatRelativeTime(trip.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>

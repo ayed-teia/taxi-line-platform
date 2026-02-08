@@ -304,3 +304,84 @@
 .driver-list tr:hover {
   background: #222;
 }
+
+/* Stat colors */
+.stat.available .stat-value {
+  color: #4ade80;
+}
+
+.stat.busy .stat-value {
+  color: #f59e0b;
+}
+
+.stat.trips .stat-value {
+  color: #3b82f6;
+}
+
+.stat.pending .stat-value {
+  color: #ef4444;
+}
+
+/* Availability badge */
+.status-badge.available {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.status-badge.busy {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+/* Trips list */
+.trips-list {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+
+.trips-list h3 {
+  color: #fff;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.trips-list.pending-trips {
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.trips-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.trips-list th,
+.trips-list td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+
+.trips-list th {
+  color: #888;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.trips-list td {
+  color: #ccc;
+}
+
+.trips-list tr:hover {
+  background: #222;
+}
+
+.trip-id {
+  font-family: monospace;
+  color: #888;
+}
+
+.trip-status {
+  font-weight: 500;
+}

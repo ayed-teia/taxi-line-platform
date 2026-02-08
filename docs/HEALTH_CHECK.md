@@ -287,7 +287,128 @@ Execute these steps in order. Each step must pass before proceeding.
 | Security Rules | | | ⬜ |
 
 ---
-## � Trip Dispatch QA Logs
+## 🎯 Driver Matching QA Verification
+
+### Test Scenarios
+
+Execute these tests to verify driver matching logic works correctly.
+
+#### Prerequisites
+- [ ] At least 2 drivers with accounts
+- [ ] All drivers have `drivers/{driverId}` documents with `lastLocation`
+- [ ] Firebase emulators running
+- [ ] Manager dashboard open to observe transitions
+
+---
+
+### Test 1: Only Online+Available Drivers Receive Requests
+
+| # | Setup | Action | Expected Result |
+|---|-------|--------|-----------------|
+| 1.1 | Driver A: Online+Available | Passenger requests trip | Driver A receives request |
+| 1.2 | Driver A: Online, Driver B: Offline | Passenger requests trip | Only Driver A receives request |
+| 1.3 | Driver A: Online+Busy (on trip) | Passenger requests trip | Driver A does NOT receive request |
+| 1.4 | All drivers: Offline | Passenger requests trip | Error: "No drivers available" |
+
+**Log to verify:**
+```
+🔍 [CreateTrip] Querying available drivers...
+🚗 [CreateTrip] Found {N} available driver(s)
+```
+
+---
+
+### Test 2: Nearest Driver Selected (Haversine)
+
+| # | Setup | Action | Expected Result |
+|---|-------|--------|-----------------|
+| 2.1 | Driver A: 1km from pickup | Passenger requests trip | Driver A selected |
+| 2.2 | Driver A: 5km, Driver B: 2km | Passenger requests trip | Driver B selected (nearer) |
+| 2.3 | Driver A: 1km, Driver B: 1km (tie) | Passenger requests trip | First in query result selected |
+
+**Log to verify:**
+```
+✅ [CreateTrip] Selected driver: {driverId}
+   distance: X.XX km
+   totalCandidates: N
+```
+
+---
+
+### Test 3: Driver Becomes Unavailable on Accept
+
+| # | Action | Expected Result | Firestore Check |
+|---|--------|-----------------|-----------------|
+| 3.1 | Driver accepts trip | isAvailable → false | `drivers/{driverId}.isAvailable = false` |
+| 3.2 | Same driver for next request? | NOT selected | Query excludes busy drivers |
+| 3.3 | Manager dashboard | Shows driver as "Busy" 🟠 | Real-time update |
+
+**Log to verify:**
+```
+🚗 [AcceptTrip] Driver isAvailable → false
+```
+
+---
+
+### Test 4: No Two Drivers Get Same Trip
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| 4.1 | Trip created | Only 1 driver assigned in `trips/{tripId}.driverId` |
+| 4.2 | Rapid accept attempts | Transaction prevents double accept |
+| 4.3 | Second driver tries to accept | Error: "Trip already accepted" |
+
+**Log to verify:**
+```
+⚠️ [AcceptTrip] Trip already accepted - blocking
+```
+
+---
+
+### Test 5: Rejected Trip Makes Driver Available Again
+
+| # | Action | Expected Result | Firestore Check |
+|---|--------|-----------------|-----------------|
+| 5.1 | Driver rejects trip | isAvailable → true | `drivers/{driverId}.isAvailable = true` |
+| 5.2 | Trip status | → no_driver_available | `trips/{tripId}.status = 'no_driver_available'` |
+| 5.3 | Driver eligible for next trip | Yes | Can receive new requests |
+
+**Log to verify:**
+```
+📝 [RejectTrip] Trip status → no_driver_available
+🚗 [RejectTrip] Driver isAvailable → true
+```
+
+> ⚠️ **MVP Limitation:** Rejected trips are NOT reassigned to next driver. Future enhancement planned.
+
+---
+
+### Test 6: Manager Sees All Transitions Live
+
+| # | Action | Manager Dashboard Shows |
+|---|--------|------------------------|
+| 6.1 | Driver goes online | 🟢 Online, ✅ Available |
+| 6.2 | Driver accepts trip | 🟢 Online, 🚗 Busy |
+| 6.3 | Trip appears | Active Trips table + map markers |
+| 6.4 | Driver completes trip | 🟢 Online, ✅ Available |
+| 6.5 | Trip moves to completed | Removed from active trips |
+| 6.6 | Pending trip (no driver) | ⏳ Pending Requests table |
+
+---
+
+### Driver Matching QA Sign-off
+
+| Test | Tester | Date | Status |
+|------|--------|------|--------|
+| Online+Available Only | | | ⬜ |
+| Nearest Driver | | | ⬜ |
+| Unavailable on Accept | | | ⬜ |
+| No Double Assignment | | | ⬜ |
+| Reject → Available | | | ⬜ |
+| Manager Live View | | | ⬜ |
+
+---
+## 📊 Trip Dispatch QA Logs
 
 Use these log patterns to verify the complete trip dispatch flow in Firebase Functions Console and React Native console:
 

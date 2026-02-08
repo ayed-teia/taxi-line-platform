@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { DriverLiveLocation } from '../services/driver-location.service';
+import { TripData, getTripStatusDisplay } from '../services/trips.service';
 
 // Fix Leaflet default icon issue with bundlers (Vite/Webpack)
 // @ts-ignore
@@ -14,11 +15,12 @@ L.Icon.Default.mergeOptions({
 });
 
 // Custom icons for driver status
-const createDriverIcon = (isOnline: boolean) => {
+const createDriverIcon = (isOnline: boolean, isAvailable: boolean) => {
+  const statusClass = !isOnline ? 'offline' : isAvailable ? 'available' : 'busy';
   return L.divIcon({
     className: 'driver-marker',
     html: `
-      <div class="driver-marker-inner ${isOnline ? 'online' : 'offline'}">
+      <div class="driver-marker-inner ${statusClass}">
         🚗
       </div>
     `,
@@ -28,12 +30,35 @@ const createDriverIcon = (isOnline: boolean) => {
   });
 };
 
+// Trip pickup icon
+const createPickupIcon = () => {
+  return L.divIcon({
+    className: 'trip-marker pickup',
+    html: `<div class="trip-marker-inner pickup">📍</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -30],
+  });
+};
+
+// Trip dropoff icon
+const createDropoffIcon = () => {
+  return L.divIcon({
+    className: 'trip-marker dropoff',
+    html: `<div class="trip-marker-inner dropoff">🎯</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -30],
+  });
+};
+
 // Nablus city center (default center for West Bank)
 const DEFAULT_CENTER: [number, number] = [32.2211, 35.2544];
 const DEFAULT_ZOOM = 13;
 
 interface DriverMapProps {
   drivers: DriverLiveLocation[];
+  trips?: TripData[];
 }
 
 /**
@@ -108,7 +133,7 @@ function AnimatedMarker({ driver }: { driver: DriverLiveLocation }) {
     return date.toLocaleTimeString();
   };
 
-  const icon = useMemo(() => createDriverIcon(driver.isOnline), [driver.isOnline]);
+  const icon = useMemo(() => createDriverIcon(driver.isOnline, driver.isAvailable), [driver.isOnline, driver.isAvailable]);
 
   return (
     <Marker
@@ -157,9 +182,65 @@ function AnimatedMarker({ driver }: { driver: DriverLiveLocation }) {
 }
 
 /**
+ * Trip marker component
+ */
+function TripMarker({ trip }: { trip: TripData }) {
+  const pickupIcon = useMemo(() => createPickupIcon(), []);
+  const dropoffIcon = useMemo(() => createDropoffIcon(), []);
+  const statusDisplay = getTripStatusDisplay(trip.status);
+
+  return (
+    <>
+      {/* Pickup marker */}
+      <Marker
+        position={[trip.pickup.lat, trip.pickup.lng]}
+        icon={pickupIcon}
+      >
+        <Popup>
+          <div className="trip-popup">
+            <strong>{statusDisplay.emoji} Trip Pickup</strong>
+            <div>Status: {statusDisplay.label}</div>
+            <div>Price: ₪{trip.estimatedPriceIls}</div>
+            <div>Trip: {trip.tripId.slice(0, 8)}...</div>
+          </div>
+        </Popup>
+      </Marker>
+
+      {/* Dropoff marker */}
+      <Marker
+        position={[trip.dropoff.lat, trip.dropoff.lng]}
+        icon={dropoffIcon}
+      >
+        <Popup>
+          <div className="trip-popup">
+            <strong>🎯 Trip Dropoff</strong>
+            <div>Distance: {trip.estimatedDistanceKm.toFixed(1)} km</div>
+            <div>Trip: {trip.tripId.slice(0, 8)}...</div>
+          </div>
+        </Popup>
+      </Marker>
+
+      {/* Route line */}
+      <Polyline
+        positions={[
+          [trip.pickup.lat, trip.pickup.lng],
+          [trip.dropoff.lat, trip.dropoff.lng],
+        ]}
+        pathOptions={{
+          color: statusDisplay.color,
+          weight: 3,
+          opacity: 0.7,
+          dashArray: '5, 10',
+        }}
+      />
+    </>
+  );
+}
+
+/**
  * Main driver map component
  */
-export function DriverMap({ drivers }: DriverMapProps) {
+export function DriverMap({ drivers, trips = [] }: DriverMapProps) {
   // Track mounted state to prevent memory leaks
   const [isMounted, setIsMounted] = useState(true);
 
@@ -186,6 +267,9 @@ export function DriverMap({ drivers }: DriverMapProps) {
       <MapAutoCenter drivers={drivers} />
       {drivers.map((driver) => (
         <AnimatedMarker key={driver.driverId} driver={driver} />
+      ))}
+      {trips.map((trip) => (
+        <TripMarker key={trip.tripId} trip={trip} />
       ))}
     </MapContainer>
   );

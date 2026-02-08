@@ -9,6 +9,9 @@ export interface DriverProfile {
   phone?: string;
   lineId?: string;
   vehiclePlate?: string;
+  isOnline?: boolean;
+  isAvailable?: boolean;
+  currentTripId?: string | null;
 }
 
 /**
@@ -25,6 +28,8 @@ export interface DriverLiveLocation {
   name?: string;
   lineId?: string;
   isOnline: boolean;
+  isAvailable: boolean;
+  currentTripId?: string | null;
 }
 
 /**
@@ -52,6 +57,9 @@ async function fetchDriverProfile(driverId: string): Promise<DriverProfile | nul
         phone: data.phone ?? undefined,
         lineId: data.lineId ?? undefined,
         vehiclePlate: data.vehiclePlate ?? undefined,
+        isOnline: data.isOnline ?? false,
+        isAvailable: data.isAvailable ?? false,
+        currentTripId: data.currentTripId ?? null,
       };
       profileCache.set(driverId, profile);
       return profile;
@@ -61,6 +69,13 @@ async function fetchDriverProfile(driverId: string): Promise<DriverProfile | nul
   }
   
   return null;
+}
+
+/**
+ * Clear profile cache (call when you need fresh data)
+ */
+export function clearDriverProfileCache(): void {
+  profileCache.clear();
 }
 
 /**
@@ -78,6 +93,9 @@ export function subscribeToAllDriverLocations(
   return onSnapshot(
     q,
     async (snapshot) => {
+      // Clear cache to get fresh availability data
+      clearDriverProfileCache();
+      
       const driversPromises = snapshot.docs.map(async (docSnap) => {
         const data = docSnap.data();
         const profile = await fetchDriverProfile(docSnap.id);
@@ -91,7 +109,9 @@ export function subscribeToAllDriverLocations(
           updatedAt: data.updatedAt?.toDate() ?? null,
           name: profile?.name,
           lineId: profile?.lineId,
-          isOnline: true, // If in driverLive, they're online
+          isOnline: profile?.isOnline ?? true, // In driverLive = online
+          isAvailable: profile?.isAvailable ?? true,
+          currentTripId: profile?.currentTripId ?? null,
         };
       });
       

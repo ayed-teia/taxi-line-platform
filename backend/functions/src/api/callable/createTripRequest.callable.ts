@@ -15,12 +15,13 @@ import { FieldValue } from 'firebase-admin/firestore';
  * Flow:
  * 1. Validate authenticated passenger
  * 2. Validate input (pickup, dropoff, estimate)
- * 3. Query driverLive for online drivers
+ * 3. Query drivers where isOnline=true AND isAvailable=true
  * 4. Compute distance from pickup using Haversine formula
  * 5. Select nearest driver
  * 6. Create trips/{tripId} document
- * 7. Create driverRequests/{driverId}/{tripId} record
- * 8. Return { tripId, driverId }
+ * 7. Mark driver isAvailable=false (in transaction)
+ * 8. Create driverRequests/{driverId}/{tripId} record
+ * 9. Return { tripId, driverId }
  * 
  * ============================================================================
  * QA VERIFICATION CHECKLIST:
@@ -28,19 +29,21 @@ import { FieldValue } from 'firebase-admin/firestore';
  * 
  * ✅ PASSENGER REQUEST FLOW:
  *    LOG: "🚕 [CreateTrip] START - passengerId: {id}"
- *    LOG: "🔍 [CreateTrip] Querying online drivers..."
- *    LOG: "🚗 [CreateTrip] Found {N} online driver(s)"
+ *    LOG: "🔍 [CreateTrip] Querying available drivers..."
+ *    LOG: "🚗 [CreateTrip] Found {N} available driver(s)"
  *    LOG: "✅ [CreateTrip] Selected driver: {driverId} ({distance} km away)"
  *    LOG: "📝 [CreateTrip] Trip created: {tripId}"
+ *    LOG: "🚗 [CreateTrip] Driver isAvailable → false"
  *    LOG: "📨 [CreateTrip] Request sent to driver: {driverId}"
  *    LOG: "🎉 [CreateTrip] COMPLETE - tripId: {id}, driverId: {id}"
  * 
  * ✅ NO DRIVERS AVAILABLE:
- *    LOG: "🚫 [CreateTrip] No online drivers - returning error"
+ *    LOG: "🚫 [CreateTrip] No available drivers - returning error"
  * 
  * ✅ SINGLE DRIVER SELECTION:
  *    - Only the NEAREST driver receives the request
  *    - Only ONE document created in driverRequests/{driverId}/requests
+ *    - Selected driver marked isAvailable=false atomically
  * 
  * ============================================================================
  */
@@ -63,15 +66,14 @@ interface CreateTripRequestResponse {
 }
 
 /**
- * Driver live location document from Firestore
+ * Driver document from drivers collection (availability)
  */
-interface DriverLiveDoc {
+interface DriverDoc {
   driverId: string;
-  lat: number;
-  lng: number;
-  heading: number | null;
-  speed: number | null;
-  status: string;
+  isOnline: boolean;
+  isAvailable: boolean;
+  lastLocation: FirebaseFirestore.GeoPoint | null;
+  currentTripId: string | null;
   updatedAt: FirebaseFirestore.Timestamp;
 }
 
@@ -179,21 +181,22 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       const db = getFirestore();
 
       // ========================================
-      // 3. Query driverLive for online drivers
+      // 3. Query drivers where isOnline=true AND isAvailable=true
       // ========================================
-      logger.info('🔍 [CreateTrip] Querying online drivers...');
+      logger.info('🔍 [CreateTrip] Querying available drivers...');
       
       const driversSnapshot = await db
-        .collection('driverLive')
-        .where('status', '==', 'online')
+        .collection('drivers')
+        .where('isOnline', '==', true)
+        .where('isAvailable', '==', true)
         .get();
 
       if (driversSnapshot.empty) {
-        logger.warn('🚫 [CreateTrip] No online drivers - returning error');
+        logger.warn('🚫 [CreateTrip] No available drivers - returning error');
         throw new NotFoundError('No drivers available at the moment');
       }
 
-      logger.info(`🚗 [CreateTrip] Found ${driversSnapshot.size} online driver(s)`);
+      logger.info(`🚗 [CreateTrip] Found ${driversSnapshot.size} available driver(s)`);
 
       // ========================================
       // 4. Compute distance using Haversine formula
@@ -201,16 +204,23 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       const driversWithDistance: Array<{
         driverId: string;
         distance: number;
-        doc: DriverLiveDoc;
+        doc: DriverDoc;
       }> = [];
 
       driversSnapshot.forEach((doc) => {
-        const driverData = doc.data() as DriverLiveDoc;
+        const driverData = doc.data() as DriverDoc;
+        
+        // Skip drivers without location data
+        if (!driverData.lastLocation) {
+          logger.debug(`Driver ${doc.id}: No location data - skipping`);
+          return;
+        }
+
         const distance = haversineDistance(
           pickup.lat,
           pickup.lng,
-          driverData.lat,
-          driverData.lng
+          driverData.lastLocation.latitude,
+          driverData.lastLocation.longitude
         );
 
         driversWithDistance.push({
@@ -261,7 +271,19 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       logger.info(`📝 [CreateTrip] Trip created: ${tripId}`);
 
       // ========================================
-      // 7. Create driverRequests/{driverId}/{tripId}
+      // 7. Mark driver isAvailable=false
+      // ========================================
+      const driverDocRef = db.collection('drivers').doc(nearestDriver.driverId);
+      await driverDocRef.set({
+        isAvailable: false,
+        currentTripId: tripId,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      logger.info(`🚗 [CreateTrip] Driver isAvailable → false`, { driverId: nearestDriver.driverId });
+
+      // ========================================
+      // 8. Create driverRequests/{driverId}/{tripId}
       // ========================================
       const driverRequestRef = db
         .collection('driverRequests')
@@ -286,7 +308,7 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       logger.info(`📨 [CreateTrip] Request sent to driver: ${nearestDriver.driverId}`);
 
       // ========================================
-      // 8. Return tripId + driverId
+      // 9. Return tripId + driverId
       // ========================================
       logger.info('🎉 [CreateTrip] COMPLETE', {
         tripId,

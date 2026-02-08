@@ -189,6 +189,18 @@ export const acceptTripRequest = onCall<unknown, Promise<AcceptTripRequestRespon
           acceptedAt: FieldValue.serverTimestamp(),
         });
 
+        // ========================================
+        // 10. Set driver as unavailable (on a trip)
+        // ========================================
+        const driverDocRef = db.collection('drivers').doc(driverId);
+        transaction.set(driverDocRef, {
+          isAvailable: false,
+          currentTripId: tripId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        logger.info('🚗 [AcceptTrip] Driver isAvailable → false');
+
         logger.info('🎉 [AcceptTrip] COMPLETE', {
           tripId,
           driverId,

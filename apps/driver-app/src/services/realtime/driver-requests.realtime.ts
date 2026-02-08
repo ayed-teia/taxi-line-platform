@@ -1,24 +1,14 @@
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  Unsubscribe,
-  orderBy,
-  limit,
-  QuerySnapshot,
-  DocumentData,
-} from 'firebase/firestore';
-import { getFirestoreAsync } from '../firebase';
+import { Unsubscribe } from 'firebase/firestore';
 import { TripRequest, useTripRequestStore } from '../../store/trip-request.store';
 import { useDriverStore } from '../../store';
+import { subscribeToIncomingTrips, IncomingTripRequest } from './trips.realtime';
 
 /**
  * ============================================================================
  * DRIVER REQUESTS REALTIME LISTENER
  * ============================================================================
  * 
- * Subscribes to driverRequests/{driverId}/requests collection.
+ * Subscribes to trips collection where driverId == currentDriver AND status == 'pending'.
  * Shows incoming trip requests as a modal when driver is ONLINE.
  * 
  * QA VERIFICATION:
@@ -26,19 +16,8 @@ import { useDriverStore } from '../../store';
  * - LOG: "📥 [DriverRequests] New request received: {tripId}"
  * - LOG: "🔇 [DriverRequests] Listener STOPPED"
  * 
- * FIRESTORE PATH: driverRequests/{driverId}/requests/{tripId}
- * 
- * DOCUMENT SCHEMA (from Cloud Function):
- * {
- *   tripId: string,
- *   passengerId: string,
- *   pickup: { lat, lng },
- *   dropoff: { lat, lng },
- *   estimatedPriceIls: number,
- *   status: 'pending' | 'accepted' | 'rejected' | 'expired',
- *   createdAt: Timestamp,
- *   expiresAt: Timestamp
- * }
+ * FIRESTORE PATH: trips/{tripId}
+ * QUERY: driverId == currentDriver AND status == 'pending'
  * 
  * ============================================================================
  */
@@ -48,37 +27,12 @@ let _unsubscribe: Unsubscribe | null = null;
 let _currentDriverId: string | null = null;
 
 /**
- * Haversine formula to calculate distance between two points
- */
-function calculateDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371; // Earth's radius in km
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  
-  return R * c;
-}
-
-function toRadians(degrees: number): number {
-  return degrees * (Math.PI / 180);
-}
-
-/**
  * Start listening for driver trip requests
  * Call when driver goes ONLINE
+ * 
+ * Listens to trips collection where:
+ * - driverId == currentDriver
+ * - status == 'pending'
  */
 export async function startDriverRequestsListener(driverId: string): Promise<void> {
   // Guard: Already listening for this driver
@@ -94,75 +48,42 @@ export async function startDriverRequestsListener(driverId: string): Promise<voi
 
   console.log('🎧 [DriverRequests] Starting listener for driver:', driverId);
 
-  try {
-    const db = await getFirestoreAsync();
-    const requestsRef = collection(db, 'driverRequests', driverId, 'requests');
+  _currentDriverId = driverId;
 
-    // Query for pending requests only, ordered by creation time
-    const q = query(
-      requestsRef,
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'desc'),
-      limit(1) // Only show the most recent pending request
-    );
+  // Get driver's current location for distance calculation
+  const driverLocation = useDriverStore.getState().currentLocation;
 
-    _currentDriverId = driverId;
+  _unsubscribe = subscribeToIncomingTrips(
+    driverId,
+    driverLocation,
+    (incomingRequest: IncomingTripRequest) => {
+      // Convert to TripRequest format for the modal
+      const request: TripRequest = {
+        tripId: incomingRequest.tripId,
+        passengerId: incomingRequest.passengerId,
+        pickup: incomingRequest.pickup,
+        dropoff: incomingRequest.dropoff,
+        estimatedPriceIls: incomingRequest.estimatedPriceIls,
+        pickupDistanceKm: incomingRequest.pickupDistanceKm,
+        status: incomingRequest.status as 'pending' | 'accepted' | 'rejected' | 'expired',
+        createdAt: incomingRequest.createdAt,
+        expiresAt: null, // Not used in trips collection
+      };
 
-    _unsubscribe = onSnapshot(
-      q,
-      (snapshot: QuerySnapshot<DocumentData>) => {
-        // Get driver's current location for distance calculation
-        const driverLocation = useDriverStore.getState().currentLocation;
+      console.log('📥 [DriverRequests] New request received:', request.tripId);
 
-        if (snapshot.empty) {
-          console.log('📭 [DriverRequests] No pending requests');
-          return;
-        }
+      // Show the request modal
+      useTripRequestStore.getState().showRequest(request);
+    },
+    () => {
+      console.log('📭 [DriverRequests] No pending requests');
+    },
+    (error) => {
+      console.error('❌ [DriverRequests] Listener error:', error);
+    }
+  );
 
-        // Process the newest pending request
-        const docSnap = snapshot.docs[0]!;
-        const data = docSnap.data();
-
-        // Calculate distance from driver to pickup
-        let pickupDistanceKm = 0;
-        if (driverLocation) {
-          pickupDistanceKm = calculateDistance(
-            driverLocation.lat,
-            driverLocation.lng,
-            data.pickup.lat,
-            data.pickup.lng
-          );
-        }
-
-        const request: TripRequest = {
-          tripId: data.tripId,
-          passengerId: data.passengerId,
-          pickup: data.pickup,
-          dropoff: data.dropoff,
-          estimatedPriceIls: data.estimatedPriceIls,
-          pickupDistanceKm: Math.round(pickupDistanceKm * 10) / 10, // Round to 1 decimal
-          status: data.status,
-          createdAt: data.createdAt?.toDate() ?? null,
-          expiresAt: data.expiresAt?.toDate() ?? null,
-        };
-
-        console.log('📥 [DriverRequests] New request received:', request.tripId);
-        console.log('   📍 Pickup distance:', pickupDistanceKm.toFixed(2), 'km');
-        console.log('   💵 Estimated price: ₪' + request.estimatedPriceIls);
-
-        // Show the request modal
-        useTripRequestStore.getState().showRequest(request);
-      },
-      (error) => {
-        console.error('❌ [DriverRequests] Listener error:', error);
-      }
-    );
-
-    console.log('✅ [DriverRequests] Listener STARTED for driver:', driverId);
-  } catch (error) {
-    console.error('❌ [DriverRequests] Failed to start listener:', error);
-    _currentDriverId = null;
-  }
+  console.log('✅ [DriverRequests] Listener STARTED for driver:', driverId);
 }
 
 /**

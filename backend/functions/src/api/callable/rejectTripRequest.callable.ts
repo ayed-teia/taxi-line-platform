@@ -161,6 +161,18 @@ export const rejectTripRequest = onCall<unknown, Promise<RejectTripRequestRespon
 
           logger.info('📝 [RejectTrip] Trip status → no_driver_available');
         }
+
+        // ========================================
+        // 6. Set driver as available again
+        // ========================================
+        const driverDocRef = db.collection('drivers').doc(driverId);
+        transaction.set(driverDocRef, {
+          isAvailable: true,
+          currentTripId: null,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        logger.info('🚗 [RejectTrip] Driver isAvailable → true');
       });
 
       logger.info('✅ [RejectTrip] COMPLETE', {
