@@ -90,6 +90,27 @@ export async function completeTrip(tripId: string): Promise<CompleteTripResponse
 }
 
 /**
+ * Confirm cash payment response type
+ */
+export interface ConfirmCashPaymentResponse {
+  success: boolean;
+  paymentStatus: string;
+  fareAmount: number;
+  paidAt: string;
+}
+
+/**
+ * Confirm cash payment collected for a completed trip
+ * Called by driver after receiving cash from passenger
+ */
+export async function confirmCashPayment(tripId: string): Promise<ConfirmCashPaymentResponse> {
+  return callFunction<{ tripId: string }, ConfirmCashPaymentResponse>(
+    'confirmCashPayment',
+    { tripId }
+  );
+}
+
+/**
  * Reject a trip request (driver action)
  * Updates driverRequests/{driverId}/requests/{tripId} status to 'rejected'
  */

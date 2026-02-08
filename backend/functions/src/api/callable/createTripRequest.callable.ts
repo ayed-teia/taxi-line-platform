@@ -90,6 +90,11 @@ interface TripDocument {
   estimatedDistanceKm: number;
   estimatedDurationMin: number;
   estimatedPriceIls: number;
+  // Payment fields
+  paymentMethod: 'cash';
+  fareAmount: number;
+  paymentStatus: 'pending' | 'paid';
+  paidAt: null;
   createdAt: FirebaseFirestore.FieldValue;
 }
 
@@ -263,6 +268,11 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
         estimatedDistanceKm: estimate.distanceKm,
         estimatedDurationMin: estimate.durationMin,
         estimatedPriceIls: estimate.priceIls,
+        // Payment defaults
+        paymentMethod: 'cash',
+        fareAmount: estimate.priceIls,
+        paymentStatus: 'pending',
+        paidAt: null,
         createdAt: FieldValue.serverTimestamp(),
       };
 

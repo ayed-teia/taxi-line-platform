@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { subscribeToAllDriverLocations, DriverLiveLocation, getUniqueLineIds } from '../services/driver-location.service';
-import { subscribeToActiveTrips, subscribeToPendingTrips, TripData, getTripStatusDisplay } from '../services/trips.service';
+import { subscribeToActiveTrips, subscribeToPendingTrips, subscribeToCompletedTrips, TripData, getTripStatusDisplay, getPaymentStatusDisplay } from '../services/trips.service';
 import { DriverMap } from '../components/DriverMap';
 import '../components/DriverMap.css';
 import './LiveMapPage.css';
@@ -9,12 +9,14 @@ export function LiveMapPage() {
   const [drivers, setDrivers] = useState<DriverLiveLocation[]>([]);
   const [activeTrips, setActiveTrips] = useState<TripData[]>([]);
   const [pendingTrips, setPendingTrips] = useState<TripData[]>([]);
+  const [completedTrips, setCompletedTrips] = useState<TripData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Filter state
   const [showOnlineOnly, setShowOnlineOnly] = useState(true);
   const [selectedLineId, setSelectedLineId] = useState<string>('all');
+  const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
 
   // Track if component is mounted to prevent memory leaks
   const isMounted = useRef(true);
@@ -64,12 +66,25 @@ export function LiveMapPage() {
       }
     );
 
+    // Subscribe to completed trips
+    const unsubCompletedTrips = subscribeToCompletedTrips(
+      (trips) => {
+        if (isMounted.current) {
+          setCompletedTrips(trips);
+        }
+      },
+      (err) => {
+        console.error('Error subscribing to completed trips:', err);
+      }
+    );
+
     // Cleanup: unsubscribe and mark as unmounted
     return () => {
       isMounted.current = false;
       unsubDrivers();
       unsubActiveTrips();
       unsubPendingTrips();
+      unsubCompletedTrips();
     };
   }, []);
 
@@ -83,6 +98,19 @@ export function LiveMapPage() {
     const busy = drivers.filter(d => d.isOnline && !d.isAvailable).length;
     return { online, available, busy };
   }, [drivers]);
+
+  // Count unpaid completed trips
+  const unpaidTripsCount = useMemo(() => {
+    return completedTrips.filter(t => t.paymentStatus === 'pending').length;
+  }, [completedTrips]);
+
+  // Filter completed trips based on unpaid filter
+  const filteredCompletedTrips = useMemo(() => {
+    if (showUnpaidOnly) {
+      return completedTrips.filter(t => t.paymentStatus === 'pending');
+    }
+    return completedTrips;
+  }, [completedTrips, showUnpaidOnly]);
 
   // Apply filters
   const filteredDrivers = useMemo(() => {
@@ -168,6 +196,12 @@ export function LiveMapPage() {
             <span className="stat-label">⏳ Pending</span>
           </div>
         )}
+        {unpaidTripsCount > 0 && (
+          <div className="stat unpaid">
+            <span className="stat-value">{unpaidTripsCount}</span>
+            <span className="stat-label">💰 Unpaid</span>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -200,6 +234,17 @@ export function LiveMapPage() {
             </label>
           </div>
         )}
+
+        <div className="filter-group">
+          <label className="filter-checkbox">
+            <input
+              type="checkbox"
+              checked={showUnpaidOnly}
+              onChange={(e) => setShowUnpaidOnly(e.target.checked)}
+            />
+            <span>💰 Unpaid Trips Only</span>
+          </label>
+        </div>
       </div>
 
       {filteredDrivers.length === 0 ? (
@@ -347,6 +392,47 @@ export function LiveMapPage() {
                         <td>{trip.driverId?.slice(0, 8) ?? '—'}</td>
                         <td>₪{trip.estimatedPriceIls}</td>
                         <td>{formatRelativeTime(trip.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Completed Trips (with payment status) */}
+          {filteredCompletedTrips.length > 0 && (
+            <div className="trips-list completed-trips">
+              <h3>
+                ✅ Completed Trips ({filteredCompletedTrips.length})
+                {showUnpaidOnly && <span className="filter-active"> — Unpaid Only</span>}
+              </h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Trip ID</th>
+                    <th>Driver</th>
+                    <th>Fare</th>
+                    <th>Payment</th>
+                    <th>Completed</th>
+                    <th>Paid At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCompletedTrips.map((trip) => {
+                    const paymentDisplay = getPaymentStatusDisplay(trip.paymentStatus);
+                    return (
+                      <tr key={trip.tripId} className={trip.paymentStatus === 'pending' ? 'unpaid-row' : ''}>
+                        <td className="trip-id">{trip.tripId.slice(0, 8)}...</td>
+                        <td>{trip.driverId?.slice(0, 8) ?? '—'}</td>
+                        <td className="fare-amount">₪{trip.fareAmount}</td>
+                        <td>
+                          <span className="payment-status" style={{ color: paymentDisplay.color }}>
+                            {paymentDisplay.emoji} {paymentDisplay.label}
+                          </span>
+                        </td>
+                        <td>{formatRelativeTime(trip.completedAt)}</td>
+                        <td>{trip.paidAt ? formatRelativeTime(trip.paidAt) : '—'}</td>
                       </tr>
                     );
                   })}

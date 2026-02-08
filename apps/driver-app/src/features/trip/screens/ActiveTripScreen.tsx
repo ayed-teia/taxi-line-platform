@@ -2,13 +2,16 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { TripStatus } from '@taxi-line/shared';
 import { Button } from '../../../ui';
-import { driverArrived, startTrip, completeTrip } from '../../../services/api';
+import { driverArrived, startTrip, completeTrip, confirmCashPayment } from '../../../services/api';
 
 interface ActiveTripScreenProps {
   tripId: string;
   status: TripStatus;
   estimatedPriceIls?: number;
+  fareAmount?: number;
+  paymentStatus?: 'pending' | 'paid';
   onTripCompleted: () => void;
+  onPaymentConfirmed?: () => void;
 }
 
 /**
@@ -19,9 +22,13 @@ export function ActiveTripScreen({
   tripId, 
   status, 
   estimatedPriceIls,
-  onTripCompleted 
+  fareAmount,
+  paymentStatus = 'pending',
+  onTripCompleted,
+  onPaymentConfirmed
 }: ActiveTripScreenProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isCollectingPayment, setIsCollectingPayment] = useState(false);
 
   const getStatusDisplay = (tripStatus: TripStatus) => {
     switch (tripStatus) {
@@ -32,7 +39,7 @@ export function ActiveTripScreen({
       case 'in_progress':
         return { text: 'Trip in progress', icon: '🛣️', action: 'Complete Trip' };
       case 'completed':
-        return { text: 'Trip completed', icon: '✅', action: null };
+        return { text: 'Trip completed', icon: '✅', action: null }; // Payment handled separately
       default:
         return { text: 'Unknown status', icon: '❓', action: null };
     }
@@ -118,9 +125,44 @@ export function ActiveTripScreen({
           />
         )}
 
-        {status === 'completed' && (
+        {status === 'completed' && paymentStatus === 'pending' && (
+          <View style={styles.paymentSection}>
+            <Text style={styles.paymentLabel}>💵 Cash Payment</Text>
+            <Text style={styles.paymentAmount}>₪{fareAmount || estimatedPriceIls}</Text>
+            <Button
+              title={isCollectingPayment ? 'Confirming...' : '✅ Cash Collected'}
+              onPress={async () => {
+                setIsCollectingPayment(true);
+                try {
+                  console.log('💵 [ActiveTrip] Confirming cash payment...');
+                  const result = await confirmCashPayment(tripId);
+                  console.log('✅ [ActiveTrip] Payment confirmed:', result);
+                  Alert.alert(
+                    'Payment Confirmed',
+                    `₪${result.fareAmount} cash collected`,
+                    [{ text: 'OK', onPress: () => {
+                      onPaymentConfirmed?.();
+                      onTripCompleted();
+                    }}]
+                  );
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Failed to confirm payment';
+                  console.error('❌ [ActiveTrip] Payment confirmation failed:', message);
+                  Alert.alert('Error', message);
+                } finally {
+                  setIsCollectingPayment(false);
+                }
+              }}
+              disabled={isCollectingPayment}
+              loading={isCollectingPayment}
+            />
+          </View>
+        )}
+
+        {status === 'completed' && paymentStatus === 'paid' && (
           <View style={styles.completedMessage}>
-            <Text style={styles.completedText}>Trip completed successfully!</Text>
+            <Text style={styles.completedText}>✅ Trip completed</Text>
+            <Text style={styles.paidText}>💵 Payment collected</Text>
           </View>
         )}
       </View>
@@ -210,5 +252,28 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#34C759',
     fontWeight: '600',
+  },
+  paymentSection: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    backgroundColor: '#F0FFF4',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  paymentLabel: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 8,
+  },
+  paymentAmount: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#34C759',
+    marginBottom: 16,
+  },
+  paidText: {
+    fontSize: 16,
+    color: '#34C759',
+    marginTop: 8,
   },
 });

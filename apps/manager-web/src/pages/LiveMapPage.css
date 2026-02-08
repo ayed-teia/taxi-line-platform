@@ -385,3 +385,37 @@
 .trip-status {
   font-weight: 500;
 }
+
+/* Payment status styles */
+.stat.unpaid .stat-value {
+  color: #f59e0b;
+}
+
+.completed-trips {
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.filter-active {
+  font-size: 0.85rem;
+  color: #f59e0b;
+  font-weight: normal;
+}
+
+.payment-status {
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.fare-amount {
+  font-weight: 600;
+  color: #4ade80;
+}
+
+.unpaid-row {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.unpaid-row:hover {
+  background: rgba(245, 158, 11, 0.15);
+}

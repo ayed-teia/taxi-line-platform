@@ -7,4 +7,5 @@ export * from './rejectTripRequest.callable';
 export * from './driverArrived.callable';
 export * from './startTrip.callable';
 export * from './completeTrip.callable';
+export * from './confirmCashPayment.callable';
 export * from './submitRating.callable';
