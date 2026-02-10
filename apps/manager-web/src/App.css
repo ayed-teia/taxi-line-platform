@@ -18,6 +18,11 @@
   color: #fff;
 }
 
+.header nav {
+  display: flex;
+  gap: 8px;
+}
+
 .header nav a {
   color: #646cff;
   text-decoration: none;

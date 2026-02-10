@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App } from './App';
 import { LiveMapPage } from './pages/LiveMapPage';
+import { DriversListPage } from './pages/DriversListPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -10,8 +11,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />}>
-          <Route index element={<Navigate to="/live-map" replace />} />
+          <Route index element={<Navigate to="/drivers" replace />} />
           <Route path="live-map" element={<LiveMapPage />} />
+          <Route path="drivers" element={<DriversListPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

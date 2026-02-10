@@ -10,11 +10,16 @@ import {
   requestLocationPermissions,
   setDriverAvailability,
   getCurrentLocation,
+  startMockLocationUpdates,
+  stopMockLocationUpdates,
 } from '../src/services/location';
 import {
   startDriverRequestsListener,
   stopDriverRequestsListener,
 } from '../src/services/realtime';
+
+// DEV MODE - use mock location instead of real GPS
+const DEV_MODE = true;
 
 /**
  * ============================================================================
@@ -46,17 +51,26 @@ export default function Home() {
 
     const manageTracking = async () => {
       if (status === 'online') {
-        // Start location tracking
-        const started = await startLocationTracking(user.uid);
-        if (!started) {
-          console.warn('Failed to start location tracking');
+        // DEV MODE: Use mock location updates (no GPS)
+        if (DEV_MODE) {
+          await startMockLocationUpdates(user.uid);
+        } else {
+          // PRODUCTION: Use real GPS tracking
+          const started = await startLocationTracking(user.uid);
+          if (!started) {
+            console.warn('Failed to start location tracking');
+          }
         }
 
         // Start listening for trip requests
         await startDriverRequestsListener(user.uid);
       } else {
         // Stop location tracking
-        await stopLocationTracking();
+        if (DEV_MODE) {
+          await stopMockLocationUpdates();
+        } else {
+          await stopLocationTracking();
+        }
 
         // Stop listening for trip requests
         await stopDriverRequestsListener();
@@ -67,7 +81,11 @@ export default function Home() {
 
     // Cleanup on unmount
     return () => {
-      stopLocationTracking();
+      if (DEV_MODE) {
+        stopMockLocationUpdates();
+      } else {
+        stopLocationTracking();
+      }
       stopDriverRequestsListener();
     };
   }, [status, user?.uid]);
@@ -78,19 +96,24 @@ export default function Home() {
       if (!user?.uid) return;
 
       if (goOnline) {
-        // Request permissions first
-        const hasPermission = await requestLocationPermissions();
-        if (!hasPermission) {
-          Alert.alert(
-            'Location Required',
-            'Location permission is required to go online. Please enable location access in settings.',
-            [{ text: 'OK' }]
-          );
-          return;
+        // DEV MODE: Skip GPS permission check
+        if (!DEV_MODE) {
+          // Request permissions first (PRODUCTION only)
+          const hasPermission = await requestLocationPermissions();
+          if (!hasPermission) {
+            Alert.alert(
+              'Location Required',
+              'Location permission is required to go online. Please enable location access in settings.',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
         }
 
-        // Get current location for availability
-        const location = await getCurrentLocation();
+        // Get current location for availability (mock in DEV mode)
+        const location = DEV_MODE 
+          ? { lat: 32.2211, lng: 35.2544 } // Nablus mock
+          : await getCurrentLocation();
         
         // Update Firestore availability
         try {

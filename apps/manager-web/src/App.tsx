@@ -7,6 +7,7 @@ export function App() {
       <header className="header">
         <h1>🚕 Waselneh Manager</h1>
         <nav>
+          <Link to="/drivers">Drivers</Link>
           <Link to="/live-map">Live Map</Link>
         </nav>
       </header>
