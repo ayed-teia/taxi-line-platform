@@ -2,8 +2,9 @@
  * System Configuration Service
  * 
  * Step 32: Pilot Hardening & Kill Switches
+ * Step 33: Go-Live Mode - Feature Flags
  * 
- * Manages system-wide configuration including the trips kill switch.
+ * Manages system-wide configuration including feature flags.
  */
 
 import { httpsCallable } from 'firebase/functions';
@@ -11,10 +12,17 @@ import { doc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { getFirestoreDb, getFunctionsInstance } from './firebase';
 
 /**
+ * Feature flag names
+ */
+export type FeatureFlag = 'tripsEnabled' | 'roadblocksEnabled' | 'paymentsEnabled';
+
+/**
  * System configuration document
  */
 export interface SystemConfig {
   tripsEnabled: boolean;
+  roadblocksEnabled: boolean;
+  paymentsEnabled: boolean;
   updatedAt?: Date;
   updatedBy?: string;
 }
@@ -36,12 +44,18 @@ export function subscribeToSystemConfig(
         const data = snapshot.data();
         onData({
           tripsEnabled: data.tripsEnabled ?? true,
+          roadblocksEnabled: data.roadblocksEnabled ?? true,
+          paymentsEnabled: data.paymentsEnabled ?? false,
           updatedAt: data.updatedAt?.toDate(),
           updatedBy: data.updatedBy,
         });
       } else {
         // Default config
-        onData({ tripsEnabled: true });
+        onData({ 
+          tripsEnabled: true,
+          roadblocksEnabled: true,
+          paymentsEnabled: false,
+        });
       }
     },
     (error) => {
@@ -62,6 +76,19 @@ export async function toggleTripsEnabled(enabled: boolean): Promise<void> {
   );
   
   await toggleTrips({ enabled });
+}
+
+/**
+ * Toggle any feature flag
+ */
+export async function toggleFeatureFlag(flag: FeatureFlag, enabled: boolean): Promise<void> {
+  const functions = getFunctionsInstance();
+  const toggleFlag = httpsCallable<{ flag: FeatureFlag; enabled: boolean }, { flag: string; enabled: boolean }>(
+    functions,
+    'managerToggleFeatureFlag'
+  );
+  
+  await toggleFlag({ flag, enabled });
 }
 
 /**

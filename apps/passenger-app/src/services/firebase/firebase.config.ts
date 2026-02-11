@@ -1,5 +1,12 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { 
+  parseAppMode, 
+  shouldAllowEmulators, 
+  getConnectionGuardMessage,
+  validateAppModeConfig,
+  type AppMode 
+} from '@taxi-line/shared';
 
 // Types only - NO direct imports of firebase modules at module level!
 import type { FirebaseApp } from 'firebase/app';
@@ -9,6 +16,8 @@ import type { Functions } from 'firebase/functions';
 
 /**
  * Firebase configuration for Passenger App
+ * 
+ * Step 33: Go-Live Mode - App Mode Support
  * 
  * CRITICAL: All Firebase services are lazy-initialized to avoid
  * "Component X has not been registered yet" errors in React Native.
@@ -26,9 +35,24 @@ const firebaseConfig = {
   appId: (expoConfig.firebaseAppId as string) || '1:123456789:web:abc123',
 };
 
-// Emulator configuration
-const useEmulators = expoConfig.useEmulators === true || expoConfig.useEmulators === 'true';
+// ============================================================================
+// APP MODE CONFIGURATION (Step 33)
+// ============================================================================
+
+const appMode: AppMode = parseAppMode(expoConfig.appMode as string);
+const emulatorsRequested = expoConfig.useEmulators === true || expoConfig.useEmulators === 'true';
+const useEmulators = shouldAllowEmulators(appMode, emulatorsRequested);
 const emulatorHost = (expoConfig.emulatorHost as string) || '127.0.0.1';
+
+// Log connection guard message
+const connectionMessage = getConnectionGuardMessage(appMode, emulatorsRequested);
+if (connectionMessage) {
+  console.log(connectionMessage);
+}
+
+// Validate config and log warnings
+const configWarnings = validateAppModeConfig(appMode, firebaseConfig.projectId);
+configWarnings.forEach(warning => console.warn(warning));
 
 // Emulator ports (must match firebase.json)
 const EMULATOR_PORTS = {
@@ -60,9 +84,7 @@ export async function getFirebaseApp(): Promise<FirebaseApp> {
       ? initializeApp(firebaseConfig) 
       : getApp();
 
-    if (useEmulators) {
-      console.log(`🔧 Firebase configured for EMULATOR mode at ${emulatorHost}`);
-    }
+    // Connection mode already logged at startup via getConnectionGuardMessage()
 
     return _app!;
   })();

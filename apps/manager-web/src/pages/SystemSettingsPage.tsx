@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { subscribeToSystemConfig, toggleTripsEnabled, SystemConfig } from '../services/system-config.service';
+import { 
+  subscribeToSystemConfig, 
+  toggleTripsEnabled, 
+  toggleFeatureFlag,
+  SystemConfig,
+  FeatureFlag 
+} from '../services/system-config.service';
 import './SystemSettingsPage.css';
 
 /**
@@ -8,9 +14,11 @@ import './SystemSettingsPage.css';
  * ============================================================================
  * 
  * Step 32: Pilot Hardening & Kill Switches
+ * Step 33: Go-Live Mode - Feature Flags
  * 
  * Manager control panel for system-wide settings:
  * - Trips kill switch (enable/disable all trips)
+ * - Feature flags for roadblocks, payments, etc.
  * 
  * ============================================================================
  */
@@ -18,7 +26,7 @@ import './SystemSettingsPage.css';
 export function SystemSettingsPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [toggling, setToggling] = useState(false);
+  const [togglingFlag, setTogglingFlag] = useState<FeatureFlag | 'trips' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,8 +44,8 @@ export function SystemSettingsPage() {
     return () => unsubscribe();
   }, []);
 
-  const handleToggle = async () => {
-    if (!config || toggling) return;
+  const handleToggleTrips = async () => {
+    if (!config || togglingFlag) return;
     
     const newEnabled = !config.tripsEnabled;
     const confirmed = window.confirm(
@@ -48,7 +56,7 @@ export function SystemSettingsPage() {
     
     if (!confirmed) return;
 
-    setToggling(true);
+    setTogglingFlag('trips');
     setError(null);
 
     try {
@@ -56,7 +64,37 @@ export function SystemSettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle trips');
     } finally {
-      setToggling(false);
+      setTogglingFlag(null);
+    }
+  };
+
+  const handleToggleFlag = async (flag: FeatureFlag, currentValue: boolean) => {
+    if (togglingFlag) return;
+
+    const flagLabels: Record<FeatureFlag, string> = {
+      tripsEnabled: 'Trip Creation',
+      roadblocksEnabled: 'Roadblocks',
+      paymentsEnabled: 'Payments',
+    };
+
+    const newEnabled = !currentValue;
+    const confirmed = window.confirm(
+      newEnabled
+        ? `Enable ${flagLabels[flag]}?`
+        : `Disable ${flagLabels[flag]}?`
+    );
+    
+    if (!confirmed) return;
+
+    setTogglingFlag(flag);
+    setError(null);
+
+    try {
+      await toggleFeatureFlag(flag, newEnabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to toggle ${flagLabels[flag]}`);
+    } finally {
+      setTogglingFlag(null);
     }
   };
 
@@ -94,7 +132,7 @@ export function SystemSettingsPage() {
       <div className="settings-card">
         <div className="setting-row">
           <div className="setting-info">
-            <h3>🚕 Trip Creation</h3>
+            <h3>🚕 Trip Creation (Kill Switch)</h3>
             <p>Control whether passengers can create new trip requests.</p>
             {config?.updatedAt && (
               <span className="last-updated">
@@ -106,10 +144,47 @@ export function SystemSettingsPage() {
           <div className="setting-control">
             <button
               className={`toggle-button ${config?.tripsEnabled ? 'enabled' : 'disabled'}`}
-              onClick={handleToggle}
-              disabled={toggling}
+              onClick={handleToggleTrips}
+              disabled={!!togglingFlag}
             >
-              {toggling ? 'Updating...' : config?.tripsEnabled ? '✅ ENABLED' : '🔴 DISABLED'}
+              {togglingFlag === 'trips' ? 'Updating...' : config?.tripsEnabled ? '✅ ENABLED' : '🔴 DISABLED'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Feature Flags */}
+      <div className="settings-card">
+        <h3>🚩 Feature Flags</h3>
+        
+        <div className="setting-row">
+          <div className="setting-info">
+            <h4>🚧 Roadblocks</h4>
+            <p>Enable/disable roadblock zone management.</p>
+          </div>
+          <div className="setting-control">
+            <button
+              className={`toggle-button small ${config?.roadblocksEnabled ? 'enabled' : 'disabled'}`}
+              onClick={() => handleToggleFlag('roadblocksEnabled', config?.roadblocksEnabled ?? true)}
+              disabled={!!togglingFlag}
+            >
+              {togglingFlag === 'roadblocksEnabled' ? '...' : config?.roadblocksEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+        </div>
+        
+        <div className="setting-row">
+          <div className="setting-info">
+            <h4>💳 Payments</h4>
+            <p>Enable/disable payment features (off for pilot)</p>
+          </div>
+          <div className="setting-control">
+            <button
+              className={`toggle-button small ${config?.paymentsEnabled ? 'enabled' : 'disabled'}`}
+              onClick={() => handleToggleFlag('paymentsEnabled', config?.paymentsEnabled ?? false)}
+              disabled={!!togglingFlag}
+            >
+              {togglingFlag === 'paymentsEnabled' ? '...' : config?.paymentsEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
         </div>

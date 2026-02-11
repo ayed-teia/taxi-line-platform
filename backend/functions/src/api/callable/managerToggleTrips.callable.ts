@@ -9,22 +9,29 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * ============================================================================
- * TOGGLE TRIPS ENABLED - Manager Cloud Function
+ * SYSTEM CONFIGURATION TOGGLES - Manager Cloud Functions
  * ============================================================================
  * 
  * Step 32: Pilot Hardening & Kill Switches
+ * Step 33: Go-Live Mode - Feature Flags
  * 
- * Allows manager to toggle the global trips kill switch.
- * 
- * FLOW:
- * 1. Validate manager authentication and role
- * 2. Update system/config.tripsEnabled
- * 3. Invalidate config cache
+ * Allows manager to toggle system-wide feature flags:
+ * - tripsEnabled: Global kill switch for trip creation
+ * - roadblocksEnabled: Toggle roadblocks feature
+ * - paymentsEnabled: Toggle payments feature
  * 
  * ============================================================================
  */
 
 const ToggleTripsSchema = z.object({
+  enabled: z.boolean(),
+});
+
+/**
+ * Schema for toggling any feature flag
+ */
+const ToggleFeatureFlagSchema = z.object({
+  flag: z.enum(['tripsEnabled', 'roadblocksEnabled', 'paymentsEnabled']),
   enabled: z.boolean(),
 });
 
@@ -120,6 +127,8 @@ export const managerToggleTrips = onCall<unknown, Promise<ToggleTripsResponse>>(
  */
 interface SystemConfigResponse {
   tripsEnabled: boolean;
+  roadblocksEnabled: boolean;
+  paymentsEnabled: boolean;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -161,18 +170,114 @@ export const getSystemConfigCallable = onCall<unknown, Promise<SystemConfigRespo
       const configDoc = await db.collection('system').doc('config').get();
       
       if (!configDoc.exists) {
-        return { tripsEnabled: true };
+        return { 
+          tripsEnabled: true,
+          roadblocksEnabled: true,
+          paymentsEnabled: false,
+        };
       }
 
       const data = configDoc.data()!;
       return {
         tripsEnabled: data.tripsEnabled ?? true,
+        roadblocksEnabled: data.roadblocksEnabled ?? true,
+        paymentsEnabled: data.paymentsEnabled ?? false,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString?.(),
         updatedBy: data.updatedBy,
       };
 
     } catch (error) {
       logger.error('❌ [GetSystemConfig] FAILED', { error });
+      throw handleError(error);
+    }
+  }
+);
+
+/**
+ * Toggle any feature flag (generalized)
+ */
+interface ToggleFeatureFlagResponse {
+  flag: string;
+  enabled: boolean;
+  updatedAt: string;
+}
+
+export const managerToggleFeatureFlag = onCall<unknown, Promise<ToggleFeatureFlagResponse>>(
+  {
+    region: REGION,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    try {
+      // ========================================
+      // 1. Validate authentication
+      // ========================================
+      const managerId = getAuthenticatedUserId(request);
+      if (!managerId) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      // ========================================
+      // 2. Check manager role
+      // ========================================
+      const db = getFirestore();
+      const managerDoc = await db.collection('users').doc(managerId).get();
+      
+      if (!managerDoc.exists) {
+        throw new ForbiddenError('User not found');
+      }
+      
+      const managerData = managerDoc.data();
+      if (managerData?.role !== 'manager' && managerData?.role !== 'admin') {
+        throw new ForbiddenError('Only managers can toggle feature flags');
+      }
+
+      // ========================================
+      // 3. Validate input
+      // ========================================
+      const parsed = ToggleFeatureFlagSchema.safeParse(request.data);
+      if (!parsed.success) {
+        throw new ValidationError('Invalid toggle request', parsed.error.flatten());
+      }
+
+      const { flag, enabled } = parsed.data;
+
+      logger.info(enabled ? `🟢 [ToggleFeatureFlag] Enabling ${flag}` : `🔴 [ToggleFeatureFlag] Disabling ${flag}`, {
+        managerId,
+        flag,
+        enabled,
+      });
+
+      // ========================================
+      // 4. Update system config
+      // ========================================
+      const now = new Date();
+      const configRef = db.collection('system').doc('config');
+      
+      await configRef.set({
+        [flag]: enabled,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: managerId,
+      }, { merge: true });
+
+      // Invalidate cache so next request gets fresh value
+      invalidateConfigCache();
+
+      logger.info('✅ [ToggleFeatureFlag] COMPLETE', {
+        flag,
+        enabled,
+        managerId,
+      });
+
+      return {
+        flag,
+        enabled,
+        updatedAt: now.toISOString(),
+      };
+
+    } catch (error) {
+      logger.error('❌ [ToggleFeatureFlag] FAILED', { error });
       throw handleError(error);
     }
   }

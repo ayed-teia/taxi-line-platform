@@ -72,10 +72,22 @@
   justify-content: space-between;
   align-items: center;
   gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.setting-row:last-child {
+  border-bottom: none;
 }
 
 .setting-info h3 {
   margin: 0 0 8px 0;
+}
+
+.setting-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  color: #444;
 }
 
 .setting-info p {
@@ -99,6 +111,12 @@
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 150px;
+}
+
+.toggle-button.small {
+  padding: 8px 16px;
+  font-size: 14px;
+  min-width: 60px;
 }
 
 .toggle-button.enabled {

@@ -2,6 +2,13 @@ import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator, Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, Auth } from 'firebase/auth';
 import { getFunctions, connectFunctionsEmulator, Functions } from 'firebase/functions';
+import {
+  parseAppMode,
+  shouldAllowEmulators,
+  getConnectionGuardMessage,
+  validateAppModeConfig,
+  type AppMode,
+} from '@taxi-line/shared';
 
 // Firebase configuration for manager web
 // In production, use environment variables
@@ -14,9 +21,24 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:123456789:web:abc123',
 };
 
-// Emulator configuration
-const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
+// ============================================================================
+// APP MODE CONFIGURATION (Step 33)
+// ============================================================================
+
+const appMode: AppMode = parseAppMode(import.meta.env.VITE_APP_MODE);
+const emulatorsRequested = import.meta.env.VITE_USE_EMULATORS === 'true';
+const useEmulators = shouldAllowEmulators(appMode, emulatorsRequested);
 const emulatorHost = import.meta.env.VITE_EMULATOR_HOST || '127.0.0.1';
+
+// Log connection guard message
+const connectionMessage = getConnectionGuardMessage(appMode, emulatorsRequested);
+if (connectionMessage) {
+  console.log(connectionMessage);
+}
+
+// Validate config and log warnings
+const configWarnings = validateAppModeConfig(appMode, firebaseConfig.projectId);
+configWarnings.forEach(warning => console.warn(warning));
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
@@ -27,9 +49,7 @@ let emulatorsConnected = false;
 export function initializeFirebase(): FirebaseApp {
   if (!app) {
     app = initializeApp(firebaseConfig);
-    if (useEmulators) {
-      console.log('🔧 Firebase configured for EMULATOR mode');
-    }
+    // Connection mode already logged at startup via getConnectionGuardMessage()
   }
   return app;
 }

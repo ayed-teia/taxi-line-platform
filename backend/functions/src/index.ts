@@ -35,6 +35,8 @@ export {
   managerForceCancelTrip,
   managerToggleTrips,
   getSystemConfigCallable,
+  // Step 33: Feature flag toggle
+  managerToggleFeatureFlag,
 } from './api/callable';
 
 // ============================================================================

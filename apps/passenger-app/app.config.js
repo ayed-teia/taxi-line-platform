@@ -34,6 +34,8 @@ module.exports = {
       typedRoutes: true,
     },
     extra: {
+      // App Mode (Step 33: Go-Live Mode)
+      appMode: process.env.EXPO_PUBLIC_APP_MODE || 'dev',
       // Firebase configuration
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
       firebaseAuthDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -41,7 +43,7 @@ module.exports = {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      // Emulator configuration
+      // Emulator configuration (only used in DEV mode)
       useEmulators: process.env.EXPO_PUBLIC_USE_EMULATORS === 'true',
       emulatorHost: process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1',
     },

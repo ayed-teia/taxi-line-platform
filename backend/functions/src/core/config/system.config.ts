@@ -4,12 +4,15 @@
  * ============================================================================
  * 
  * Step 32: Pilot Hardening & Kill Switches
+ * Step 33: Go-Live Mode - Feature Flags
  * 
  * Reads runtime configuration from Firestore document:
  *   system/config
  * 
  * Provides:
  * - tripsEnabled: Global kill switch for trip creation
+ * - roadblocksEnabled: Toggle roadblocks/station management
+ * - paymentsEnabled: Toggle payment features (off for pilot)
  * 
  * ============================================================================
  */
@@ -23,6 +26,10 @@ import { logger } from '../logger';
 export interface SystemConfig {
   /** Global kill switch - if false, reject all new trip requests */
   tripsEnabled: boolean;
+  /** Roadblocks/station management feature flag */
+  roadblocksEnabled: boolean;
+  /** Payments feature flag (disabled for pilot unless required) */
+  paymentsEnabled: boolean;
   /** Timestamp of last update */
   updatedAt?: FirebaseFirestore.Timestamp;
   /** Who last updated the config */
@@ -34,6 +41,8 @@ export interface SystemConfig {
  */
 const DEFAULT_CONFIG: SystemConfig = {
   tripsEnabled: true,
+  roadblocksEnabled: true,
+  paymentsEnabled: false, // Off by default for pilot safety
 };
 
 /**
@@ -70,6 +79,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       const data = configDoc.data();
       configCache = {
         tripsEnabled: data?.tripsEnabled ?? DEFAULT_CONFIG.tripsEnabled,
+        roadblocksEnabled: data?.roadblocksEnabled ?? DEFAULT_CONFIG.roadblocksEnabled,
+        paymentsEnabled: data?.paymentsEnabled ?? DEFAULT_CONFIG.paymentsEnabled,
         updatedAt: data?.updatedAt,
         updatedBy: data?.updatedBy,
       };
