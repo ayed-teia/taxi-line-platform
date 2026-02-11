@@ -102,6 +102,27 @@ export function RatingScreen({
         <Text style={styles.price}>₪{finalPriceIls.toFixed(2)}</Text>
       </View>
 
+      {/* Payment Info Card */}
+      <View style={styles.paymentCard}>
+        <View style={styles.paymentHeader}>
+          <Text style={styles.paymentIcon}>💳</Text>
+          <Text style={styles.paymentTitle}>Payment Required</Text>
+        </View>
+        <View style={styles.paymentDetails}>
+          <View style={styles.paymentRow}>
+            <Text style={styles.paymentLabel}>Amount</Text>
+            <Text style={styles.paymentAmount}>₪{finalPriceIls.toFixed(2)}</Text>
+          </View>
+          <View style={styles.paymentRow}>
+            <Text style={styles.paymentLabel}>Method</Text>
+            <View style={styles.paymentMethodBadge}>
+              <Text style={styles.paymentMethodText}>💵 Cash</Text>
+              <Text style={styles.comingSoonText}>(coming soon: card)</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
       {/* Rating section */}
       <View style={styles.ratingSection}>
         <Text style={styles.ratingTitle}>How was your trip?</Text>
@@ -282,5 +303,61 @@ const styles = StyleSheet.create({
   skipButtonText: {
     color: '#8E8E93',
     fontSize: 16,
+  },
+  // Payment card styles
+  paymentCard: {
+    backgroundColor: '#FFF9E6',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  paymentIcon: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  paymentTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  paymentDetails: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  paymentLabel: {
+    fontSize: 14,
+    color: '#8E8E93',
+  },
+  paymentAmount: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#34C759',
+  },
+  paymentMethodBadge: {
+    alignItems: 'flex-end',
+  },
+  paymentMethodText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  comingSoonText: {
+    fontSize: 11,
+    color: '#8E8E93',
+    fontStyle: 'italic',
   },
 });

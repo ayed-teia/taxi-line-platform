@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App } from './App';
 import { LiveMapPage } from './pages/LiveMapPage';
 import { DriversListPage } from './pages/DriversListPage';
+import { PaymentsListPage } from './pages/PaymentsListPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route index element={<Navigate to="/drivers" replace />} />
           <Route path="live-map" element={<LiveMapPage />} />
           <Route path="drivers" element={<DriversListPage />} />
+          <Route path="payments" element={<PaymentsListPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

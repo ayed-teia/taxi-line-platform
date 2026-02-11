@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethod, PaymentStatus } from '../enums/payment-status.enum';
 
 /**
  * ============================================================================
@@ -10,28 +11,13 @@ import { z } from 'zod';
  * This document represents a taxi trip from request to completion.
  * 
  * Note: TripStatus is defined in ../enums/trip-status.enum.ts
+ * Note: PaymentMethod and PaymentStatus are defined in ../enums/payment-status.enum.ts
  * 
  * ============================================================================
  */
 
-/**
- * Payment method options
- */
-export const PaymentMethod = {
-  CASH: 'cash',
-} as const;
-
-export type PaymentMethod = typeof PaymentMethod[keyof typeof PaymentMethod];
-
-/**
- * Payment status options
- */
-export const PaymentStatus = {
-  PENDING: 'pending',
-  PAID: 'paid',
-} as const;
-
-export type PaymentStatus = typeof PaymentStatus[keyof typeof PaymentStatus];
+// Importing from enums - re-exported for backward compatibility
+// (PaymentMethod and PaymentStatus are now in payment-status.enum.ts)
 
 /**
  * Trip payment schema

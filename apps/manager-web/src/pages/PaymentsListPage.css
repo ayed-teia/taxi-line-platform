@@ -1,0 +1,186 @@
+/**
+ * ============================================================================
+ * PAYMENTS LIST PAGE STYLES
+ * ============================================================================
+ */
+
+.payments-page {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.payments-page h1 {
+  font-size: 28px;
+  margin-bottom: 24px;
+  color: #1a1a1a;
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 150px;
+  flex: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-left: 4px solid #ccc;
+}
+
+.summary-card.paid {
+  border-left-color: #34c759;
+}
+
+.summary-card.pending {
+  border-left-color: #ff9500;
+}
+
+.summary-card.total {
+  border-left-color: #007aff;
+}
+
+.summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.summary-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Loading State */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 16px;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+/* Table Container */
+.table-container {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Payments Table */
+.payments-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.payments-table th,
+.payments-table td {
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.payments-table th {
+  background: #f8f8f8;
+  font-weight: 600;
+  color: #666;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.payments-table tbody tr {
+  border-top: 1px solid #f0f0f0;
+  transition: background 0.2s;
+}
+
+.payments-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+/* Table Cells */
+.trip-id {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  color: #666;
+}
+
+.amount {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.amount .currency {
+  font-size: 12px;
+  color: #999;
+  margin-right: 2px;
+}
+
+.method {
+  font-size: 14px;
+}
+
+.date {
+  color: #666;
+  font-size: 13px;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-paid {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge-pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.badge-failed {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .summary-cards {
+    flex-direction: column;
+  }
+  
+  .payments-table {
+    font-size: 14px;
+  }
+  
+  .payments-table th,
+  .payments-table td {
+    padding: 10px 8px;
+  }
+}

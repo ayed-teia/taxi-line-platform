@@ -9,6 +9,7 @@ export function App() {
         <nav>
           <Link to="/drivers">Drivers</Link>
           <Link to="/live-map">Live Map</Link>
+          <Link to="/payments">Payments</Link>
         </nav>
       </header>
       <main className="main">

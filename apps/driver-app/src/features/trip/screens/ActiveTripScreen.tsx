@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { TripStatus } from '@taxi-line/shared';
 import { Button } from '../../../ui';
-import { driverArrived, startTrip, completeTrip, confirmCashPayment } from '../../../services/api';
+import { driverArrived, startTrip, completeTrip } from '../../../services/api';
 import { 
   subscribeToActiveRoadblocks, 
   checkRouteIntersectsRoadblocks,
@@ -37,7 +37,6 @@ export function ActiveTripScreen({
   onPaymentConfirmed
 }: ActiveTripScreenProps) {
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isCollectingPayment, setIsCollectingPayment] = useState(false);
   const [roadblocks, setRoadblocks] = useState<RoadblockData[]>([]);
   const [intersectingRoadblocks, setIntersectingRoadblocks] = useState<RoadblockData[]>([]);
 
@@ -188,35 +187,17 @@ export function ActiveTripScreen({
 
         {status === 'completed' && paymentStatus === 'pending' && (
           <View style={styles.paymentSection}>
-            <Text style={styles.paymentLabel}>💵 Cash Payment</Text>
-            <Text style={styles.paymentAmount}>₪{fareAmount || estimatedPriceIls}</Text>
-            <Button
-              title={isCollectingPayment ? 'Confirming...' : '✅ Cash Collected'}
-              onPress={async () => {
-                setIsCollectingPayment(true);
-                try {
-                  console.log('💵 [ActiveTrip] Confirming cash payment...');
-                  const result = await confirmCashPayment(tripId);
-                  console.log('✅ [ActiveTrip] Payment confirmed:', result);
-                  Alert.alert(
-                    'Payment Confirmed',
-                    `₪${result.fareAmount} cash collected`,
-                    [{ text: 'OK', onPress: () => {
-                      onPaymentConfirmed?.();
-                      onTripCompleted();
-                    }}]
-                  );
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : 'Failed to confirm payment';
-                  console.error('❌ [ActiveTrip] Payment confirmation failed:', message);
-                  Alert.alert('Error', message);
-                } finally {
-                  setIsCollectingPayment(false);
-                }
-              }}
-              disabled={isCollectingPayment}
-              loading={isCollectingPayment}
-            />
+            <View style={styles.collectCashHeader}>
+              <Text style={styles.collectCashIcon}>💵</Text>
+              <Text style={styles.collectCashTitle}>Collect Cash from Passenger</Text>
+            </View>
+            <View style={styles.amountContainer}>
+              <Text style={styles.amountLabel}>Amount to collect</Text>
+              <Text style={styles.amountValue}>₪{fareAmount || estimatedPriceIls}</Text>
+            </View>
+            <Text style={styles.paymentNote}>
+              Payment confirmation coming soon
+            </Text>
           </View>
         )}
 
@@ -381,5 +362,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  // Collect cash styles
+  collectCashHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  collectCashIcon: {
+    fontSize: 28,
+    marginRight: 8,
+  },
+  collectCashTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  amountContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  amountLabel: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginBottom: 4,
+  },
+  amountValue: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#34C759',
+  },
+  paymentNote: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });

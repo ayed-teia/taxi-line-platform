@@ -1,6 +1,6 @@
 import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
-import { TripStatus } from '@taxi-line/shared';
+import { TripStatus, PaymentStatus, PaymentMethod } from '@taxi-line/shared';
 import { REGION } from '../../core/env';
 import { getFirestore } from '../../core/config';
 import { handleError, ValidationError, NotFoundError, ForbiddenError, UnauthorizedError } from '../../core/errors';
@@ -48,6 +48,7 @@ interface CompleteTripResponse {
   success: boolean;
   status: string;
   finalPriceIls: number;
+  paymentId: string;
 }
 
 /**
@@ -104,6 +105,13 @@ export const completeTrip = onCall<unknown, Promise<CompleteTripResponse>>(
 
         const tripData = tripDoc.data()!;
 
+        // =====================================================================
+        // PAYMENT: Check if payment already exists (must read BEFORE writes)
+        // =====================================================================
+        const paymentId = `payment_${tripId}`;
+        const paymentRef = db.collection('payments').doc(paymentId);
+        const existingPayment = await transaction.get(paymentRef);
+
         // Validate driver ownership
         if (tripData.driverId !== driverId) {
           logger.warn('🚫 [CompleteTrip] Driver not assigned to trip', { driverId, tripId, assignedDriver: tripData.driverId });
@@ -142,7 +150,28 @@ export const completeTrip = onCall<unknown, Promise<CompleteTripResponse>>(
 
         logger.info('🚗 [CompleteTrip] Driver isAvailable → true', { driverId });
 
-        return { status: TripStatus.COMPLETED, finalPriceIls };
+        // =====================================================================
+        // CREATE PAYMENT DOCUMENT (Idempotent - uses tripId as paymentId)
+        // =====================================================================
+        if (!existingPayment.exists) {
+          transaction.set(paymentRef, {
+            paymentId,
+            tripId,
+            passengerId: tripData.passengerId,
+            driverId,
+            amount: finalPriceIls,
+            currency: 'ILS',
+            method: PaymentMethod.CASH, // Default for MVP
+            status: PaymentStatus.PENDING,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          logger.info('💳 [CompleteTrip] Payment created', { paymentId, tripId, amount: finalPriceIls });
+        } else {
+          logger.info('💳 [CompleteTrip] Payment already exists (idempotent)', { paymentId });
+        }
+
+        return { status: TripStatus.COMPLETED, finalPriceIls, paymentId };
       });
 
       logger.info('📝 [CompleteTrip] Trip status → completed', { tripId });
@@ -159,6 +188,7 @@ export const completeTrip = onCall<unknown, Promise<CompleteTripResponse>>(
         success: true,
         status: result.status,
         finalPriceIls: result.finalPriceIls,
+        paymentId: result.paymentId,
       };
     } catch (error) {
       throw handleError(error);
