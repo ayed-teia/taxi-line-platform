@@ -1,6 +1,7 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator, Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, Auth } from 'firebase/auth';
+import { getFunctions, connectFunctionsEmulator, Functions } from 'firebase/functions';
 
 // Firebase configuration for manager web
 // In production, use environment variables
@@ -20,6 +21,7 @@ const emulatorHost = import.meta.env.VITE_EMULATOR_HOST || '127.0.0.1';
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
+let functions: Functions | null = null;
 let emulatorsConnected = false;
 
 export function initializeFirebase(): FirebaseApp {
@@ -57,4 +59,17 @@ export function getFirebaseAuth(): Auth {
     }
   }
   return auth;
+}
+
+export function getFunctionsInstance(): Functions {
+  if (!functions) {
+    const firebaseApp = initializeFirebase();
+    functions = getFunctions(firebaseApp, 'me-west1');
+    
+    if (useEmulators) {
+      connectFunctionsEmulator(functions, emulatorHost, 5001);
+      console.log(`  ✓ Functions Emulator: ${emulatorHost}:5001`);
+    }
+  }
+  return functions;
 }

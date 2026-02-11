@@ -1,0 +1,150 @@
+.settings-page {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.settings-page h1 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+/* Warning Banner */
+.warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.warning-icon {
+  font-size: 24px;
+}
+
+.warning-content strong {
+  display: block;
+  color: #856404;
+  margin-bottom: 4px;
+}
+
+.warning-content p {
+  margin: 0;
+  color: #856404;
+  font-size: 14px;
+}
+
+/* Error Banner */
+.error-banner {
+  padding: 12px 16px;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  color: #721c24;
+  margin-bottom: 20px;
+}
+
+/* Settings Card */
+.settings-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.settings-card h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.setting-info h3 {
+  margin: 0 0 8px 0;
+}
+
+.setting-info p {
+  margin: 0 0 8px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.last-updated {
+  font-size: 12px;
+  color: #999;
+}
+
+/* Toggle Button */
+.toggle-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 150px;
+}
+
+.toggle-button.enabled {
+  background: #28a745;
+  color: white;
+}
+
+.toggle-button.enabled:hover:not(:disabled) {
+  background: #218838;
+}
+
+.toggle-button.disabled {
+  background: #dc3545;
+  color: white;
+}
+
+.toggle-button.disabled:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.toggle-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Pilot Limits */
+.pilot-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.limit-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.limit-label {
+  color: #666;
+  font-size: 14px;
+}
+
+.limit-value {
+  font-weight: 600;
+  color: #333;
+}

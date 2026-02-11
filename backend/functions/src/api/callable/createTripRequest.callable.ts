@@ -2,7 +2,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import { LatLngSchema, TripEstimateSchema, TripStatus, TripRequestStatus, PILOT_LIMITS, ACTIVE_TRIP_STATUSES } from '@taxi-line/shared';
 import { REGION } from '../../core/env';
-import { getFirestore } from '../../core/config';
+import { getFirestore, areTripsEnabled } from '../../core/config';
 import { handleError, ValidationError, UnauthorizedError, NotFoundError, ForbiddenError } from '../../core/errors';
 import { logger } from '../../core/logger';
 import { getAuthenticatedUserId } from '../../core/auth';
@@ -191,6 +191,15 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
   },
   async (request) => {
     try {
+      // ========================================
+      // 0. Check kill switch (PILOT SAFETY GUARD)
+      // ========================================
+      const tripsEnabled = await areTripsEnabled();
+      if (!tripsEnabled) {
+        logger.warn('🚫 [CreateTrip] Trips are disabled by kill switch');
+        throw new ForbiddenError('Trip requests are temporarily disabled. Please try again later.');
+      }
+
       // ========================================
       // 1. Validate authentication
       // ========================================

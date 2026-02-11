@@ -1,0 +1,179 @@
+import { onCall } from 'firebase-functions/v2/https';
+import { z } from 'zod';
+import { REGION } from '../../core/env';
+import { getFirestore, invalidateConfigCache } from '../../core/config';
+import { handleError, ValidationError, ForbiddenError, UnauthorizedError } from '../../core/errors';
+import { logger } from '../../core/logger';
+import { getAuthenticatedUserId } from '../../core/auth';
+import { FieldValue } from 'firebase-admin/firestore';
+
+/**
+ * ============================================================================
+ * TOGGLE TRIPS ENABLED - Manager Cloud Function
+ * ============================================================================
+ * 
+ * Step 32: Pilot Hardening & Kill Switches
+ * 
+ * Allows manager to toggle the global trips kill switch.
+ * 
+ * FLOW:
+ * 1. Validate manager authentication and role
+ * 2. Update system/config.tripsEnabled
+ * 3. Invalidate config cache
+ * 
+ * ============================================================================
+ */
+
+const ToggleTripsSchema = z.object({
+  enabled: z.boolean(),
+});
+
+interface ToggleTripsResponse {
+  tripsEnabled: boolean;
+  updatedAt: string;
+}
+
+export const managerToggleTrips = onCall<unknown, Promise<ToggleTripsResponse>>(
+  {
+    region: REGION,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    try {
+      // ========================================
+      // 1. Validate authentication
+      // ========================================
+      const managerId = getAuthenticatedUserId(request);
+      if (!managerId) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      // ========================================
+      // 2. Check manager role
+      // ========================================
+      const db = getFirestore();
+      const managerDoc = await db.collection('users').doc(managerId).get();
+      
+      if (!managerDoc.exists) {
+        throw new ForbiddenError('User not found');
+      }
+      
+      const managerData = managerDoc.data();
+      if (managerData?.role !== 'manager' && managerData?.role !== 'admin') {
+        logger.warn('🚫 [ToggleTrips] Not a manager', {
+          userId: managerId,
+          role: managerData?.role,
+        });
+        throw new ForbiddenError('Only managers can toggle trip settings');
+      }
+
+      // ========================================
+      // 3. Validate input
+      // ========================================
+      const parsed = ToggleTripsSchema.safeParse(request.data);
+      if (!parsed.success) {
+        throw new ValidationError('Invalid toggle request', parsed.error.flatten());
+      }
+
+      const { enabled } = parsed.data;
+
+      logger.info(enabled ? '🟢 [ToggleTrips] Enabling trips' : '🔴 [ToggleTrips] Disabling trips', {
+        managerId,
+        enabled,
+      });
+
+      // ========================================
+      // 4. Update system config
+      // ========================================
+      const now = new Date();
+      const configRef = db.collection('system').doc('config');
+      
+      await configRef.set({
+        tripsEnabled: enabled,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: managerId,
+      }, { merge: true });
+
+      // Invalidate cache so next request gets fresh value
+      invalidateConfigCache();
+
+      logger.info('✅ [ToggleTrips] COMPLETE', {
+        tripsEnabled: enabled,
+        managerId,
+      });
+
+      return {
+        tripsEnabled: enabled,
+        updatedAt: now.toISOString(),
+      };
+
+    } catch (error) {
+      logger.error('❌ [ToggleTrips] FAILED', { error });
+      throw handleError(error);
+    }
+  }
+);
+
+/**
+ * Get system configuration (for Manager Web)
+ */
+interface SystemConfigResponse {
+  tripsEnabled: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const getSystemConfigCallable = onCall<unknown, Promise<SystemConfigResponse>>(
+  {
+    region: REGION,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    try {
+      // ========================================
+      // 1. Validate authentication
+      // ========================================
+      const userId = getAuthenticatedUserId(request);
+      if (!userId) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      // ========================================
+      // 2. Check manager role
+      // ========================================
+      const db = getFirestore();
+      const userDoc = await db.collection('users').doc(userId).get();
+      
+      if (!userDoc.exists) {
+        throw new ForbiddenError('User not found');
+      }
+      
+      const userData = userDoc.data();
+      if (userData?.role !== 'manager' && userData?.role !== 'admin') {
+        throw new ForbiddenError('Only managers can view system configuration');
+      }
+
+      // ========================================
+      // 3. Get system config
+      // ========================================
+      const configDoc = await db.collection('system').doc('config').get();
+      
+      if (!configDoc.exists) {
+        return { tripsEnabled: true };
+      }
+
+      const data = configDoc.data()!;
+      return {
+        tripsEnabled: data.tripsEnabled ?? true,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString?.(),
+        updatedBy: data.updatedBy,
+      };
+
+    } catch (error) {
+      logger.error('❌ [GetSystemConfig] FAILED', { error });
+      throw handleError(error);
+    }
+  }
+);

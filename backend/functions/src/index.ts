@@ -29,6 +29,12 @@ export {
   startTrip,
   completeTrip,
   submitRating,
+  // Step 32: Cancel flows and kill switch
+  passengerCancelTrip,
+  driverCancelTrip,
+  managerForceCancelTrip,
+  managerToggleTrips,
+  getSystemConfigCallable,
 } from './api/callable';
 
 // ============================================================================
@@ -44,7 +50,7 @@ export {
 // ============================================================================
 // Trips Module Functions
 // ============================================================================
-export { expireDriverRequests } from './modules/trips';
+export { expireDriverRequests, expireStaleTrips } from './modules/trips';
 
 // ============================================================================
 // Pricing Module Functions

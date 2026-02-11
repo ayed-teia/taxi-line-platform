@@ -11,6 +11,7 @@ export function App() {
           <Link to="/live-map">Live Map</Link>
           <Link to="/payments">Payments</Link>
           <Link to="/roadblocks">Roadblocks</Link>
+          <Link to="/settings">Settings</Link>
         </nav>
       </header>
       <main className="main">

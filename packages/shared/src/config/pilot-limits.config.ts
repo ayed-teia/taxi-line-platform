@@ -37,6 +37,18 @@ export const PILOT_LIMITS = {
    * Minimum fare amount in ILS
    */
   MIN_FARE_ILS: 10,
+
+  /**
+   * Trip search timeout in seconds
+   * If trip.status === "searching" for > this time, auto-cancel
+   */
+  TRIP_SEARCH_TIMEOUT_SECONDS: 120, // 2 minutes
+
+  /**
+   * Driver arrival timeout in seconds
+   * If trip.status === "accepted" and driver doesn't arrive within this time, auto-cancel
+   */
+  DRIVER_ARRIVAL_TIMEOUT_SECONDS: 300, // 5 minutes
 } as const;
 
 // Note: ACTIVE_TRIP_STATUSES is already exported from enums/trip-status.enum.ts
