@@ -1,36 +1,28 @@
 /**
  * Pricing calculation utilities
  *
- * Hardcoded pricing rule: Every 2km = 1 ILS
- * Final price = ceil(distanceKm / 2)
- */
-
-/**
- * Calculate trip price based on distance
- * Rule: Every 2km costs 1 ILS, with ceiling rounding
+ * Re-exports shared pricing logic from @taxi-line/shared
+ * Ensures consistency between frontend estimates and backend calculations
  *
- * @param distanceKm - Distance in kilometers
- * @returns Price in ILS
+ * Pricing Rule: Every 2km = 1 ILS (0.5 ILS/km), minimum 5 ILS
  */
-export function calculatePrice(distanceKm: number): number {
-  // Minimum fare of 5 ILS
-  const MIN_FARE = 5;
 
-  // Every 2km = 1 ILS
-  const KM_PER_ILS = 2;
-
-  const calculatedPrice = Math.ceil(distanceKm / KM_PER_ILS);
-
-  // Return at least the minimum fare
-  return Math.max(calculatedPrice, MIN_FARE);
-}
+// Re-export all pricing utilities from shared package
+export {
+  PRICING_CONFIG,
+  calculatePrice,
+  roundDistanceKm,
+  formatPrice,
+  formatDistance,
+  calculateTripEstimate,
+} from '@taxi-line/shared';
 
 /**
  * Price breakdown for transparency
  */
 export interface PriceBreakdown {
   distanceKm: number;
-  pricePerUnit: number; // ILS per 2km
+  pricePerUnit: number; // ILS per km
   calculatedPrice: number;
   minimumFare: number;
   finalPrice: number;
@@ -39,17 +31,18 @@ export interface PriceBreakdown {
 /**
  * Get detailed price breakdown
  */
+import { PRICING_CONFIG, roundDistanceKm } from '@taxi-line/shared';
+
 export function getPriceBreakdown(distanceKm: number): PriceBreakdown {
-  const MIN_FARE = 5;
-  const KM_PER_ILS = 2;
-  const calculatedPrice = Math.ceil(distanceKm / KM_PER_ILS);
-  const finalPrice = Math.max(calculatedPrice, MIN_FARE);
+  const roundedDistance = roundDistanceKm(distanceKm);
+  const calculatedPrice = Math.ceil(roundedDistance * PRICING_CONFIG.RATE_PER_KM);
+  const finalPrice = Math.max(calculatedPrice, PRICING_CONFIG.MINIMUM_PRICE_ILS);
 
   return {
-    distanceKm,
-    pricePerUnit: 1 / KM_PER_ILS, // 0.5 ILS per km
+    distanceKm: roundedDistance,
+    pricePerUnit: PRICING_CONFIG.RATE_PER_KM,
     calculatedPrice,
-    minimumFare: MIN_FARE,
+    minimumFare: PRICING_CONFIG.MINIMUM_PRICE_ILS,
     finalPrice,
   };
 }

@@ -7,6 +7,7 @@ import { handleError, ValidationError, UnauthorizedError, NotFoundError, Forbidd
 import { logger } from '../../core/logger';
 import { getAuthenticatedUserId } from '../../core/auth';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { calculatePrice } from '../../modules/pricing/utils';
 
 /**
  * ============================================================================
@@ -283,6 +284,18 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       const tripRef = db.collection('trips').doc();
       const tripId = tripRef.id;
 
+      // SECURITY: Recalculate price server-side - never trust client estimate
+      const serverCalculatedPriceIls = calculatePrice(estimate.distanceKm);
+      
+      // Log if client price differs from server calculation (for monitoring)
+      if (serverCalculatedPriceIls !== estimate.priceIls) {
+        logger.warn('💰 [CreateTrip] Price mismatch - using server calculation', {
+          clientPrice: estimate.priceIls,
+          serverPrice: serverCalculatedPriceIls,
+          distanceKm: estimate.distanceKm,
+        });
+      }
+
       const tripDoc: TripDocument = {
         tripId,
         passengerId,
@@ -292,10 +305,10 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
         dropoff: { lat: dropoff.lat, lng: dropoff.lng },
         estimatedDistanceKm: estimate.distanceKm,
         estimatedDurationMin: estimate.durationMin,
-        estimatedPriceIls: estimate.priceIls,
+        estimatedPriceIls: serverCalculatedPriceIls,
         // Payment defaults
         paymentMethod: 'cash',
-        fareAmount: estimate.priceIls,
+        fareAmount: serverCalculatedPriceIls,
         paymentStatus: 'pending',
         paidAt: null,
         createdAt: FieldValue.serverTimestamp(),
@@ -309,7 +322,7 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
       logger.tripEvent('TRIP_CREATED', tripId, {
         passengerId,
         driverId: nearestDriver.driverId,
-        estimatedPriceIls: estimate.priceIls,
+        estimatedPriceIls: serverCalculatedPriceIls,
         distanceKm: estimate.distanceKm,
       });
 
@@ -344,7 +357,7 @@ export const createTripRequest = onCall<unknown, Promise<CreateTripRequestRespon
         passengerId,
         pickup: { lat: pickup.lat, lng: pickup.lng },
         dropoff: { lat: dropoff.lat, lng: dropoff.lng },
-        estimatedPriceIls: estimate.priceIls,
+        estimatedPriceIls: serverCalculatedPriceIls,
         status: 'pending',
         createdAt: FieldValue.serverTimestamp(),
         expiresAt,
